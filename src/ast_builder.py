@@ -6,6 +6,37 @@ class ASTBuilder(grammarNumLangVisitor):
     def visitChildren(self, node):
         return super().visitChildren(node)
     
+    def visitProg(self, ctx):
+        funcs = []
+        for child in ctx.children:
+            res = self.visit(child)
+            if res and isinstance(res, Func):
+                funcs.append(res)
+        return Program(funcs=funcs)
+
+    # --- Template Declaration ---
+    def visitTemplate_decl(self, ctx):
+        # template_decl: 'template' '<' template_param_list '>' func_decl;
+        
+        # 1. Извлекаем параметры шаблона (T, Type и т.д.)
+        template_params = []
+        if ctx.template_param_list():
+            for tp in ctx.template_param_list().template_param():
+                # template_param: 'type' ID
+                # ID обычно второй ребенок (индекс 1) или можно найти по типу
+                template_params.append(tp.ID().getText())
+        
+        # 2. Посещаем вложенную декларацию функции
+        func_node = self.visit(ctx.func_decl())
+        
+        # 3. Добавляем информацию о шаблоне в объект функции
+        if isinstance(func_node, Func):
+            func_node.is_template = True
+            func_node.template_params = template_params
+            
+        return func_node
+
+    # --- Function Declaration ---
     def visitFunc_decl(self, ctx):
         return self._visit_func_decl(ctx)
     
@@ -13,77 +44,61 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._visit_func_decl(ctx)
 
     def _visit_func_decl(self, ctx):
+        # Тип возврата
         ret_type = None
         if hasattr(ctx, 'BASE_TYPE') and ctx.BASE_TYPE():
             ret_type = ctx.BASE_TYPE().getText()
         else:
+            # Если тип шаблонный (например T), он будет первым токеном (не function)
             first = ctx.getChild(0).getText()
-            if first in ("int", "float", "char", "string", "void"):
+            if first != 'function':
                 ret_type = first
-        
+
+        # Имя функции
         name = None
-        # Ищем имя функции
         if hasattr(ctx, 'FUNC_MAIN_ID'):
              name = ctx.FUNC_MAIN_ID().getText()
         else:
-            found_function = False
+            # Ищем ID после слова function
+            found = False
             for child in ctx.children:
-                txt = child.getText()
-                if txt == 'function':
-                    found_function = True
+                if child.getText() == 'function':
+                    found = True
                     continue
-                if found_function and txt.isidentifier():
-                    name = txt
+                if found and hasattr(child, 'getSymbol') and child.getSymbol().type == grammarNumLangParser.ID:
+                    name = child.getText()
                     break
-        
-        if not name and hasattr(ctx, 'ID'):
-             # Fallback
-             try: name = ctx.ID().getText()
-             except: pass
 
-        # Сбор параметров И их типов
+        # Параметры и их типы
         params = []
         param_types = []
         if hasattr(ctx, 'param_list') and ctx.param_list():
             pl = ctx.param_list()
             for p in pl.param():
-                # param: BASE_TYPE ID | ID '[' ']' ID | ID ID
-                # Упрощенно берем первый токен как тип, последний как имя
+                # Структура param: TYPE NAME
                 p_type = p.getChild(0).getText()
                 p_name = p.getChild(p.getChildCount()-1).getText()
                 params.append(p_name)
                 param_types.append(p_type)
         
+        # Тело функции
         stmts = []
         if hasattr(ctx, 'func_body') and ctx.func_body():
             fb = ctx.func_body()
             for s in fb.statement():
                 node = self.visit(s)
                 if node: stmts.append(node)
-        
-        templ_params = None
-        if hasattr(ctx, 'template_params') and ctx.template_params():
-            templ_params = [tp.getText() for tp in ctx.template_params().template_arg()]
 
-        is_template = (templ_params is not None)
+        # Важно: здесь мы НЕ парсим template_params, это делает visitTemplate_decl
         return Func(name=name, params=params, param_types=param_types, 
                     body=stmts, ret_type=ret_type,
-                    is_template=is_template, template_params=templ_params)
+                    is_template=False, template_params=None)
 
+    # --- Statements ---
     def visitVar_decl(self, ctx):
-        t = None
-        name = None
-        if ctx.BASE_TYPE():
-            t = ctx.BASE_TYPE().getText()
-            name = ctx.ID(0).getText()
-        else:
-            # Случай ID ID
-            if len(ctx.ID()) > 1:
-                t = ctx.ID(0).getText()
-                name = ctx.ID(1).getText()
-            else:
-                name = ctx.ID(0).getText()
-
+        # var_decl: TYPE ID ...
+        t = ctx.getChild(0).getText()
+        name = ctx.getChild(1).getText()
         init = None
         if ctx.expr():
             init = self.visit(ctx.expr())
@@ -100,22 +115,19 @@ class ASTBuilder(grammarNumLangVisitor):
         cond = self.visit(ctx.expr())
         then_body = []
         else_body = None
-        
         bodies = ctx.func_body()
         if bodies:
             for s in bodies[0].statement():
                 n = self.visit(s)
                 if n: then_body.append(n)
         
-        # Поиск else
-        else_index = -1
+        else_idx = -1
         for i in range(ctx.getChildCount()):
             if ctx.getChild(i).getText() == 'else':
-                else_index = i
-                break
+                else_idx = i; break
         
-        if else_index != -1:
-            child = ctx.getChild(else_index + 1)
+        if else_idx != -1:
+            child = ctx.getChild(else_idx + 1)
             if isinstance(child, grammarNumLangParser.If_statementContext):
                 else_body = [self.visit(child)]
             elif len(bodies) > 1:
@@ -123,7 +135,6 @@ class ASTBuilder(grammarNumLangVisitor):
                 for s in bodies[1].statement():
                     n = self.visit(s)
                     if n: else_body.append(n)
-
         return IfStmt(cond=cond, then_body=then_body, else_body=else_body)
 
     def visitWhile_statement(self, ctx):
@@ -136,10 +147,8 @@ class ASTBuilder(grammarNumLangVisitor):
         return WhileStmt(cond=cond, body=body)
 
     def visitFor_statement(self, ctx):
-        # Упрощенная логика
         init_node = None
         if ctx.var_decl(): init_node = self.visit(ctx.var_decl())
-        
         exprs = ctx.expr()
         cond_node, step_node = None, None
         
@@ -165,9 +174,8 @@ class ASTBuilder(grammarNumLangVisitor):
         return ForStmt(init=init_node, cond=cond_node, step=step_node, body=body)
 
     # --- Expressions ---
-    def visitExpr(self, ctx):
-        return self.visit(ctx.assignment_expr())
-
+    def visitExpr(self, ctx): return self.visit(ctx.assignment_expr())
+    
     def visitAssignment_expr(self, ctx):
         if ctx.getChildCount() > 1 and ctx.getChild(1).getText() == '=':
             return BinaryOp(op='=', left=self.visit(ctx.logic_expr()), right=self.visit(ctx.assignment_expr()))

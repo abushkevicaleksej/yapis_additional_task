@@ -1,3 +1,4 @@
+import copy
 from src.ast_nodes import *
 from typing import List, Dict
 
@@ -20,6 +21,7 @@ class WATEmitter:
         self.funcs_emitted = set()
         self.lines = []
         
+        # Индексируем исходные функции
         for f in program.funcs:
             self.func_index[f.name] = f
 
@@ -27,35 +29,113 @@ class WATEmitter:
         for imp in self.extra_imports:
             self.lines.append(f'{self.indent}{imp}')
 
+        # Генерируем новые функции из шаблонов
         self._instantiate_templates_from_calls(program)
-
+        
+        # Обновляем индекс с учетом сгенерированных
         for f in program.funcs:
-            self.emit_func(f)
+            self.func_index[f.name] = f
+
+        # Эмитим ВСЕ функции (включая сгенерированные), кроме шаблонов
+        for f in program.funcs:
+            if not f.is_template:
+                self.emit_func(f)
 
         self.lines.append(')')
         return '\n'.join(self.lines)
 
     def _instantiate_templates_from_calls(self, program: Program):
         new_funcs = []
+        processed_signatures = set()
+
+        calls_to_process = []
         for f in program.funcs:
-            calls = self._collect_calls(f.body)
-            for call in calls:
-                if call.template_args:
-                    base = call.name
-                    mangled = self._mangle(base, call.template_args)
-                    if mangled not in self.func_index:
-                        base_func = self.func_index.get(base)
-                        if base_func and base_func.is_template:
-                            newf = Func(name=mangled,
-                                        params=base_func.params.copy(),
-                                        param_types=base_func.param_types.copy(),
-                                        body=base_func.body.copy(),
-                                        ret_type=base_func.ret_type,
-                                        is_template=False,
-                                        template_params=None)
-                            new_funcs.append(newf)
-                            self.func_index[mangled] = newf
+            if not f.is_template:
+                calls_to_process.extend(self._collect_calls(f.body))
+        
+        i = 0
+        while i < len(calls_to_process):
+            call = calls_to_process[i]
+            i += 1
+            
+            if call.template_args:
+                base_name = call.name
+                mangled_name = self._mangle(base_name, call.template_args)
+                
+                if mangled_name in self.func_index: continue
+                if mangled_name in processed_signatures: continue
+
+                base_func = self.func_index.get(base_name)
+                if base_func and base_func.is_template:
+                    new_func = copy.deepcopy(base_func)
+                    new_func.name = mangled_name
+                    new_func.is_template = False
+                    new_func.template_params = None
+                    
+                    type_map = {}
+                    if base_func.template_params and len(base_func.template_params) == len(call.template_args):
+                        for j, t_param in enumerate(base_func.template_params):
+                            type_map[t_param] = call.template_args[j]
+                    
+                    self._replace_types_in_func(new_func, type_map)
+                    
+                    new_funcs.append(new_func)
+                    processed_signatures.add(mangled_name)
+                    self.func_index[mangled_name] = new_func 
+                    
+                    calls_to_process.extend(self._collect_calls(new_func.body))
+
         program.funcs.extend(new_funcs)
+
+    def _replace_types_in_func(self, func: Func, type_map: Dict[str, str]):
+        if func.ret_type in type_map:
+            func.ret_type = type_map[func.ret_type]
+        
+        if func.param_types:
+            new_pt = []
+            for pt in func.param_types:
+                new_pt.append(type_map.get(pt, pt))
+            func.param_types = new_pt
+            
+        self._replace_types_in_stmts(func.body, type_map)
+
+    def _replace_types_in_stmts(self, stmts: List[Stmt], type_map: Dict[str, str]):
+        if not stmts: return
+        for s in stmts:
+            if isinstance(s, VarDecl):
+                if s.type in type_map: s.type = type_map[s.type]
+                if s.init: self._replace_types_in_expr(s.init, type_map)
+            elif isinstance(s, Return):
+                if s.expr: self._replace_types_in_expr(s.expr, type_map)
+            elif isinstance(s, ExprStmt):
+                self._replace_types_in_expr(s.expr, type_map)
+            elif isinstance(s, IfStmt):
+                self._replace_types_in_expr(s.cond, type_map)
+                self._replace_types_in_stmts(s.then_body, type_map)
+                if s.else_body: self._replace_types_in_stmts(s.else_body, type_map)
+            elif isinstance(s, WhileStmt):
+                self._replace_types_in_expr(s.cond, type_map)
+                self._replace_types_in_stmts(s.body, type_map)
+            elif isinstance(s, ForStmt):
+                if isinstance(s.init, Stmt): self._replace_types_in_stmts([s.init], type_map)
+                if s.cond: self._replace_types_in_expr(s.cond, type_map)
+                if s.step: self._replace_types_in_expr(s.step, type_map)
+                self._replace_types_in_stmts(s.body, type_map)
+
+    def _replace_types_in_expr(self, e: Expr, type_map: Dict[str, str]):
+        if isinstance(e, CastExpr):
+            if e.target_type in type_map: e.target_type = type_map[e.target_type]
+            self._replace_types_in_expr(e.expr, type_map)
+        elif isinstance(e, BinaryOp):
+            self._replace_types_in_expr(e.left, type_map)
+            self._replace_types_in_expr(e.right, type_map)
+        elif isinstance(e, UnaryOp):
+            self._replace_types_in_expr(e.expr, type_map)
+        elif isinstance(e, FuncCall):
+            for a in e.args: self._replace_types_in_expr(a, type_map)
+            if e.template_args:
+                new_ta = [type_map.get(ta, ta) for ta in e.template_args]
+                e.template_args = new_ta
 
     def _collect_calls(self, stmts):
         res = []
@@ -105,27 +185,26 @@ class WATEmitter:
         if isinstance(e, IntConst): return 'int'
         if isinstance(e, FloatConst): return 'float'
         if isinstance(e, StringConst): return 'int'
+        if isinstance(e, CharConst): return 'char'
         if isinstance(e, VarRef):
             return self.var_types.get(e.name, 'int')
         if isinstance(e, CastExpr):
             return e.target_type
         if isinstance(e, BinaryOp):
             if e.op == '=': return self._get_expr_type(e.left)
-            
-            # Логические операции и сравнения ВСЕГДА возвращают int (0 или 1)
-            if e.op in ['==', '!=', '<', '<=', '>', '>=', '&&', '||']:
-                return 'int'
-            
-            # Арифметические операции наследуют тип (float, если есть float)
+            if e.op in ['==', '!=', '<', '<=', '>', '>=', '&&', '||']: return 'int'
             t_left = self._get_expr_type(e.left)
             t_right = self._get_expr_type(e.right)
             if t_left == 'float' or t_right == 'float': return 'float'
             return 'int'
-            
         if isinstance(e, FuncCall):
             if e.name == 'in': return 'int'
+        
+            if e.name == 'out': return 'int' 
+            
             f = self.func_index.get(e.name)
-            if f and f.ret_type: return f.ret_type
+            if f:
+                return f.ret_type # может вернуть 'void'
             return 'int'
         if isinstance(e, UnaryOp):
             return self._get_expr_type(e.expr)
@@ -197,15 +276,19 @@ class WATEmitter:
                 target_type = s.type if s.type else 'int'
                 expr_type = self._get_expr_type(s.init)
                 self.emit_expr(s.init)
-                if target_type == 'float' and expr_type == 'int':
+                
+                if target_type == 'float' and (expr_type == 'int' or expr_type == 'char'):
                     self.lines.append(f'{indent}f32.convert_i32_s')
-                elif target_type == 'int' and expr_type == 'float':
+                elif (target_type == 'int' or target_type == 'char') and expr_type == 'float':
                     self.lines.append(f'{indent}i32.trunc_f32_s')
+                    
                 self.lines.append(f'{indent}local.set ${s.name}')
         
         elif isinstance(s, ExprStmt):
             self.emit_expr(s.expr)
-            self.lines.append(f'{indent}drop')
+            # FIX: Делаем drop только если выражение что-то вернуло (не void)
+            if self._get_expr_type(s.expr) != 'void':
+                self.lines.append(f'{indent}drop')
         
         elif isinstance(s, Return):
             if s.expr:
@@ -214,11 +297,9 @@ class WATEmitter:
             
         elif isinstance(s, IfStmt):
             self.emit_expr(s.cond)
-            # Если условие по какой-то причине всё ещё float (например, переменная float), конвертируем
             if self._get_expr_type(s.cond) == 'float':
                  self.lines.append(f'{indent}f32.const 0.0')
                  self.lines.append(f'{indent}f32.ne')
-            
             self.lines.append(f'{indent}if')
             for ts in s.then_body: self.emit_stmt(ts)
             if s.else_body:
@@ -258,11 +339,6 @@ class WATEmitter:
             self.lines.append(f'{indent}br ${lc}')
             self.lines.append(f'{indent}end')
             self.lines.append(f'{indent}end')
-        
-        elif hasattr(s, 'is_break') and getattr(s, 'is_break', False):
-             if self.loop_stack: self.lines.append(f'{indent}br ${self.loop_stack[-1][0]}')
-        elif hasattr(s, 'is_continue') and getattr(s, 'is_continue', False):
-             if self.loop_stack: self.lines.append(f'{indent}br ${self.loop_stack[-1][1]}')
 
     def emit_expr(self, e):
         indent = self.indent * 2
@@ -282,9 +358,11 @@ class WATEmitter:
             self.emit_expr(e.expr)
             src = self._get_expr_type(e.expr)
             dst = e.target_type
-            if src == 'int' and dst == 'float':
+            
+            if src == dst: pass
+            elif (src == 'int' or src == 'char') and dst == 'float':
                 self.lines.append(f'{indent}f32.convert_i32_s')
-            elif src == 'float' and dst == 'int':
+            elif src == 'float' and (dst == 'int' or dst == 'char'):
                 self.lines.append(f'{indent}i32.trunc_f32_s')
 
         elif isinstance(e, BinaryOp):
@@ -293,10 +371,12 @@ class WATEmitter:
                 var_type = self._get_expr_type(e.left)
                 val_type = self._get_expr_type(e.right)
                 self.emit_expr(e.right)
-                if var_type == 'float' and val_type == 'int':
+                
+                if var_type == 'float' and (val_type == 'int' or val_type == 'char'):
                     self.lines.append(f'{indent}f32.convert_i32_s')
-                elif var_type == 'int' and val_type == 'float':
+                elif (var_type == 'int' or var_type == 'char') and val_type == 'float':
                     self.lines.append(f'{indent}i32.trunc_f32_s')
+                
                 self.lines.append(f'{indent}local.tee ${e.left.name}')
                 return
 
@@ -304,32 +384,26 @@ class WATEmitter:
             t_right = self._get_expr_type(e.right)
             is_float_op = (t_left == 'float' or t_right == 'float')
 
-            # Special case: Power
             if e.op == '^':
-                # Пытаемся обработать b^2
                 if isinstance(e.right, IntConst) and e.right.value == 2 and isinstance(e.left, VarRef):
-                     self.emit_expr(e.left) # push b
-                     if t_left == 'int': self.lines.append(f'{indent}f32.convert_i32_s')
-                     self.emit_expr(e.left) # push b
-                     if t_left == 'int': self.lines.append(f'{indent}f32.convert_i32_s')
+                     self.emit_expr(e.left)
+                     if t_left != 'float': self.lines.append(f'{indent}f32.convert_i32_s')
+                     self.emit_expr(e.left)
+                     if t_left != 'float': self.lines.append(f'{indent}f32.convert_i32_s')
                      self.lines.append(f'{indent}f32.mul')
                      return
-
-                # Normal path for ^ 0.5 (Sqrt)
                 self.emit_expr(e.left)
-                if t_left == 'int': self.lines.append(f'{indent}f32.convert_i32_s')
-                # Ignore right operand value on stack (assume 0.5 for sqrt)
-                # But we must emit it to clear visitor? No, just drop it.
+                if t_left != 'float': self.lines.append(f'{indent}f32.convert_i32_s')
                 self.emit_expr(e.right)
                 self.lines.append(f'{indent}drop')
                 self.lines.append(f'{indent}f32.sqrt')
                 return
 
             self.emit_expr(e.left)
-            if is_float_op and t_left == 'int': self.lines.append(f'{indent}f32.convert_i32_s')
+            if is_float_op and t_left != 'float': self.lines.append(f'{indent}f32.convert_i32_s')
             
             self.emit_expr(e.right)
-            if is_float_op and t_right == 'int': self.lines.append(f'{indent}f32.convert_i32_s')
+            if is_float_op and t_right != 'float': self.lines.append(f'{indent}f32.convert_i32_s')
 
             if is_float_op:
                 op_map = {
@@ -375,11 +449,14 @@ class WATEmitter:
                     self.emit_expr(arg)
                     expr_t = self._get_expr_type(arg)
                     param_t = 'int'
+                    
                     if target_func and i < len(target_func.param_types):
                         param_t = target_func.param_types[i]
                     
-                    if param_t == 'float' and expr_t == 'int':
+                    if param_t == 'float' and expr_t != 'float':
                         self.lines.append(f'{indent}f32.convert_i32_s')
+                    elif param_t != 'float' and expr_t == 'float':
+                        self.lines.append(f'{indent}i32.trunc_f32_s')
                 
                 fname = e.name
                 if e.template_args: fname = self._mangle(e.name, e.template_args)
