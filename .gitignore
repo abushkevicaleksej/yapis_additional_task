@@ -1,0 +1,6 @@
+__pycache__/
+*.jar
+tests/
+bones/
+wabt-1.0.39/
+*.code-workspace
