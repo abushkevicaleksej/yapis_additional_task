@@ -27,16 +27,17 @@ class SemanticAnalyzer:
         self._check_main_function()
 
     def _register_builtins(self):
-        # Регистрация функции out (принимает что угодно, возвращает void/int)
+        # Регистрация функции out (принимает один аргумент любого типа)
         out_type = Type(TypeKind.FUNCTION)
-        out_type.return_type = Type(TypeKind.VOID)
-        out_type.param_types = [] # Мы сделаем спец. обработку для out в _check_func_call
+        out_type.return_type = Type(TypeKind.INT) 
+        out_type.param_types = [] 
         self.symbol_table.add_symbol(Symbol("out", SymbolKind.FUNCTION, out_type))
         
-        # Регистрация функции in (возвращает int)
+        # РЕГИСТРАЦИЯ ФУНКЦИИ in
         in_type = Type(TypeKind.FUNCTION)
         in_type.return_type = Type(TypeKind.INT)
-        in_type.param_types = []
+        # Указываем, что функция ожидает один аргумент типа STRING
+        in_type.param_types = [Type(TypeKind.STRING)] 
         self.symbol_table.add_symbol(Symbol("in", SymbolKind.FUNCTION, in_type))
 
     def _collect_declarations(self, program: Program):
@@ -247,15 +248,19 @@ class SemanticAnalyzer:
             ))
             return None
         
-        # Специальная обработка для 'out' (принимает любое кол-во аргументов любых типов)
+        # Специальная обработка для 'out' (может принимать что угодно)
         if expr.name == "out":
-            for arg in expr.args: self._check_expr(arg)
+            for arg in expr.args: 
+                self._check_expr(arg)
             return func_symbol.type.return_type
 
-        # Проверка обычных функций
+        # Для 'in' теперь стандартная проверка сработает корректно, 
+        # так как мы указали [Type(TypeKind.STRING)] выше.
+
         if len(expr.args) != len(func_symbol.type.param_types):
              self.errors.add_error(Error(
-                type=ErrorType.ARGUMENT, message=f"Expected {len(func_symbol.type.param_types)} args, got {len(expr.args)}",
+                type=ErrorType.ARGUMENT, 
+                message=f"Function '{expr.name}' expects {len(func_symbol.type.param_types)} args, got {len(expr.args)}",
                 line=expr.line, column=expr.column
             ))
         

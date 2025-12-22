@@ -100,18 +100,30 @@ class ASTBuilder(grammarNumLangVisitor):
         return self.visit(ctx.logic_expr())
 
     def visitIf_statement(self, ctx):
+        # 1. Условие if
         cond = self.visit(ctx.expr())
-        then_body = []
-        bodies = ctx.func_body()
-        if bodies:
-            for s in bodies[0].statement():
-                n = self.visit(s)
-                if n: then_body.append(n)
         
+        # 2. Ветка THEN (всегда первый func_body)
+        then_body = []
+        if ctx.func_body():
+            for s in ctx.func_body(0).statement():
+                node = self.visit(s)
+                if node: then_body.append(node)
+        
+        # 3. Ветка ELSE
         else_body = None
-        if len(bodies) > 1:
-            else_body = [self.visit(s) for s in bodies[1].statement() if self.visit(s)]
+        
+        # Если есть вложенный if (else if ...)
+        if ctx.if_statement():
+            else_body = [self.visit(ctx.if_statement())]
             
+        # Если есть блок else { ... } (второй func_body в контексте)
+        elif len(ctx.func_body()) > 1:
+            else_body = []
+            for s in ctx.func_body(1).statement():
+                node = self.visit(s)
+                if node: else_body.append(node)
+                    
         return self._with_pos(IfStmt(cond=cond, then_body=then_body, else_body=else_body), ctx)
 
     def visitFunc_call(self, ctx):
@@ -120,7 +132,14 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(FuncCall(name=name, args=args), ctx)
     
     def visitInput_expr(self, ctx):
-        return self._with_pos(FuncCall(name='in', args=[]), ctx)
+        # input_expr: 'in' '(' STRING ')'
+        prompt_text = ""
+        if ctx.STRING():
+            prompt_text = ctx.STRING().getText()[1:-1] # Убираем кавычки
+        
+        # Создаем FuncCall с одним строковым аргументом
+        args = [StringConst(value=prompt_text)]
+        return self._with_pos(FuncCall(name='in', args=args), ctx)
 
     def visitOutput_expr(self, ctx):
         arg = self.visit(ctx.expr())

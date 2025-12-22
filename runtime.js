@@ -22,13 +22,28 @@ const importObject = {
             console.log(`[OUT STR]: ${str}`);
         },
         
-        in_i32: () => {
-            process.stderr.write("[INPUT]: ");
+        in_i32: (offset, length) => {
+            const memory = wasmInstance.exports.memory;
+            if (length > 0) {
+                // Читаем подсказку из памяти WASM
+                const bytes = new Uint8Array(memory.buffer, offset, length);
+                const prompt = new TextDecoder("utf-8").decode(bytes);
+                process.stdout.write(`${prompt}: `); // Выводим подсказку без переноса строки
+            } else {
+                process.stdout.write("[INPUT]: ");
+            }
+
+            // Синхронное чтение ввода
             const BUF_SIZE = 1024;
             const buffer = Buffer.alloc(BUF_SIZE);
-            const bytesRead = fs.readSync(0, buffer, 0, BUF_SIZE);
-            return parseInt(buffer.toString('utf8', 0, bytesRead).trim()) || 0;
-        }
+            try {
+                const bytesRead = fs.readSync(0, buffer, 0, BUF_SIZE);
+                const input = buffer.toString('utf8', 0, bytesRead).trim();
+                return parseInt(input, 10) || 0;
+            } catch (e) {
+                return 0;
+            }
+        },
     }
 };
 

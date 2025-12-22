@@ -10,7 +10,7 @@ int function CalculateFibonacci(int n) {
 }
 
 int function Main() {
-    int in_value = in("Enter number to calculate next fibonacci value...");
+    int in_value = in("Enter number to calculate fibonacci value...");
     int out_result = CalculateFibonacci(in_value);    
         
     out(out_result);
