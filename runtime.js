@@ -7,40 +7,35 @@ if (process.argv.length < 3) {
 
 const wasmBuffer = fs.readFileSync(process.argv[2]);
 
+let wasmInstance; // Ссылка на инстанс для доступа к памяти
+
 const importObject = {
     env: {
         out_i32: (value) => console.log(`[OUT INT]: ${value}`),
         out_f32: (value) => console.log(`[OUT FLOAT]: ${value.toFixed(4)}`),
+        
+        out_str: (offset, length) => {
+            // Читаем байты из памяти WASM
+            const memory = wasmInstance.exports.memory;
+            const bytes = new Uint8Array(memory.buffer, offset, length);
+            const str = new TextDecoder("utf-8").decode(bytes);
+            console.log(`[OUT STR]: ${str}`);
+        },
+        
         in_i32: () => {
-            // Синхронный ввод подсказки в stderr (чтобы не буферизировалось)
             process.stderr.write("[INPUT]: ");
-            
-            // Читаем до переноса строки
-            let input = "";
-            const buffer = Buffer.alloc(1);
-            while (true) {
-                try {
-                    const bytesRead = fs.readSync(0, buffer, 0, 1);
-                    if (bytesRead === 0 || buffer[0] === 10) break; // 10 = \n
-                    input += buffer.toString();
-                } catch (e) { break; }
-            }
-            const num = parseInt(input.trim(), 10);
-            return isNaN(num) ? 0 : num;
+            const BUF_SIZE = 1024;
+            const buffer = Buffer.alloc(BUF_SIZE);
+            const bytesRead = fs.readSync(0, buffer, 0, BUF_SIZE);
+            return parseInt(buffer.toString('utf8', 0, bytesRead).trim()) || 0;
         }
     }
 };
 
 (async () => {
-    try {
-        const wasmModule = await WebAssembly.instantiate(wasmBuffer, importObject);
-        const exports = wasmModule.instance.exports;
-        const mainFunc = exports.Main || exports.main;
-        if (mainFunc) {
-            const result = mainFunc();
-            console.log(`Program finished with result: ${result}`);
-        }
-    } catch (err) {
-        console.error("Runtime Error:", err);
-    }
+    const wasmModule = await WebAssembly.instantiate(wasmBuffer, importObject);
+    wasmInstance = wasmModule.instance; // Сохраняем инстанс
+    
+    const mainFunc = wasmInstance.exports.Main || wasmInstance.exports.main;
+    if (mainFunc) mainFunc();
 })();
