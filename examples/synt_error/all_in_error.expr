@@ -1,0 +1,19 @@
+int[] function CreateMatrix() {
+    int matrix = [[1, 2], [3, 4, 5]];  // Ошибка: несовместимые размеры строк
+    return matrix;  // Ошибка: возврат matrix вместо int[]
+}
+
+int function Main() {
+    // Ошибка: использование void-функции в выражении
+    void function DoNothing() { }
+    int x = DoNothing() + 5;
+    
+    // Ошибка: побочный эффект в sum
+    int counter = 0;
+    int total = sum(i, 1, 10, counter++);  // Изменение counter внутри sum
+    
+    // Ошибка: переполнение стека
+    int infinite = Recursive<int>(1);
+    
+    return "success";  // Ошибка: возврат string вместо int
+}

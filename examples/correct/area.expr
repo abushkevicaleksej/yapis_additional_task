@@ -1,0 +1,26 @@
+float function calculateArea(float a, float b, float c)
+{
+    float s = (a + b + c) / 2.0;
+    float temp = s * (s - a) * (s - b) * (s - c);
+    float area = (float) (temp ^ 0.5);
+    return area;
+}
+
+int function Main()
+{
+    int x = 5;
+    int y = 6;
+    int z = 7;
+
+    float result = calculateArea((float)x, (float)y, (float)z);
+
+    if result != result then 
+    {
+        out("Triangle is not exist");
+    } 
+    else 
+    {
+        out(result);
+    }   
+    return 0;
+}

@@ -1,0 +1,15 @@
+int function ProcessData(float x) {
+    string result = "Value: " + x;  // Ошибка: сложение string и float
+    return result;                  // Ошибка: возврат string вместо int
+}
+
+int function Main() {
+    int value = 10;
+    if value > 5 then {
+        int temp = 20;
+    }
+    out(temp);  // Ошибка: temp вне области видимости
+    
+    ProcessData("text");  // Ошибка: несоответствие типа аргумента
+    return 0;
+}
