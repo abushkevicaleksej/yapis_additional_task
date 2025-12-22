@@ -1,0 +1,25 @@
+int function Main() {
+    int x = 5;
+    
+    // Ошибка: отсутствует 'then' после условия
+    if x > 0 {
+        out("Positive");
+    }
+    
+    // Ошибка: лишняя точка с запятой перед блоком
+    else; {
+        out("Non-positive");
+    }
+    
+    // Ошибка: отсутствует '(' в for
+    for int i = 0; i < 5; i++ {
+        out(i);
+    }
+    
+    // Ошибка: отсутствует выражение в while
+    while {
+        out("Infinite loop?");
+    }
+    
+    return 0;
+}

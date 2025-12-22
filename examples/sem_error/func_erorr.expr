@@ -1,0 +1,18 @@
+// Ошибка: отсутствует ключевое слово 'function' после типа
+int CalculateSum(int a, int b) {
+    return a + b;
+}
+
+// Ошибка: неправильный формат параметра массива (должно быть ID '[]' ID)
+int function ProcessArray(int[] array size) {
+    int sum = 0;
+    for (int i = 0; i < 10; i++) {
+        sum = sum + array[i];
+    }
+    return sum;
+}
+
+// Ошибка: отсутствует закрывающая фигурная скобка
+int function Main() {
+    out("Hello World");
+    return 0

@@ -1,0 +1,32 @@
+float function CalculateArea(float a, float b) {
+    // Вычисляем интеграл x^2 от a до b
+    float area = integral(x^2, x, a, b);
+    return area;
+}
+
+float function ApproximateSin(float x) {
+    // Сумма ряда для sin(x) = x - x^3/3! + x^5/5! - ...
+    float sum = 0;
+    int n = 5; // Количество членов ряда
+    for (int i = 0; i < n; i++) {
+        float term = (-1)^i * x^(2*i+1);
+        int factorial = 1;
+        for (int j = 1; j <= 2*i+1; j++) {
+            factorial = factorial * j;
+        }
+        sum = sum + term / factorial;
+    }
+    return sum;
+}
+
+int function Main() {
+    float area = CalculateArea(0, 1);
+    out("Area under x^2 from 0 to 1: ");
+    out(area);
+    
+    float sinValue = ApproximateSin(3.14159 / 6);
+    out("sin(pi/6) approximation: ");
+    out(sinValue);
+    
+    return 0;
+}
