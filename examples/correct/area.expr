@@ -8,9 +8,9 @@ float function calculateArea(float a, float b, float c)
 
 int function Main()
 {
-    int x = 5;
-    int y = 6;
-    int z = 7;
+    int x = in("Enter x...");
+    int y = in("Enter y...");
+    int z = in("Enter z...");
 
     float result = calculateArea((float)x, (float)y, (float)z);
 

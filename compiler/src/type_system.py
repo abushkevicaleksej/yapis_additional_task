@@ -54,3 +54,51 @@ class ErrorCollector:
     def clear(self):
         self.errors.clear()
         self.warnings.clear()
+
+from enum import Enum, auto
+from dataclasses import dataclass
+from typing import List, Optional
+
+class TypeKind(Enum):
+    INT = auto()
+    FLOAT = auto()
+    CHAR = auto()
+    STRING = auto()
+    VOID = auto()
+    FUNCTION = auto()
+    TEMPLATE = auto()
+
+@dataclass
+class Type:
+    kind: TypeKind
+    return_type: Optional['Type'] = None
+    param_types: List['Type'] = None
+    template_params: List[str] = None
+
+    def __str__(self):
+        return self.kind.name.lower()
+
+class TypeChecker:
+    def get_type(self, type_name: str) -> Type:
+        mapping = {
+            'int': TypeKind.INT,
+            'float': TypeKind.FLOAT,
+            'char': TypeKind.CHAR,
+            'string': TypeKind.STRING,
+            'void': TypeKind.VOID
+        }
+        kind = mapping.get(type_name, TypeKind.INT)
+        return Type(kind)
+
+    def is_numeric(self, t: Type) -> bool:
+        return t.kind in [TypeKind.INT, TypeKind.FLOAT]
+
+    def can_assign(self, target: Type, source: Type) -> bool:
+        if target.kind == source.kind: return True
+        if target.kind == TypeKind.FLOAT and source.kind == TypeKind.INT: return True
+        return False
+
+    def get_common_type(self, t1: Type, t2: Type) -> Optional[Type]:
+        if t1.kind == TypeKind.FLOAT or t2.kind == TypeKind.FLOAT:
+            return Type(TypeKind.FLOAT)
+        return Type(TypeKind.INT)

@@ -1,36 +1,32 @@
 const fs = require('fs');
 
 if (process.argv.length < 3) {
-    console.log("Usage: node runtime.js <wasm-file> [function-name]");
+    console.log("Usage: node runtime.js <wasm-file>");
     process.exit(1);
 }
 
-const wasmPath = process.argv[2];
-const funcName = process.argv[3] || 'Main';
-const wasmBuffer = fs.readFileSync(wasmPath);
+const wasmBuffer = fs.readFileSync(process.argv[2]);
 
 const importObject = {
     env: {
-        out_i32: (value) => {
-            console.log(`[OUT INT]: ${value}`);
-        },
-        // Добавлена поддержка вывода float
-        out_f32: (value) => {
-            console.log(`[OUT FLOAT]: ${value}`);
-        },
+        out_i32: (value) => console.log(`[OUT INT]: ${value}`),
+        out_f32: (value) => console.log(`[OUT FLOAT]: ${value.toFixed(4)}`),
         in_i32: () => {
-            process.stdout.write("[IN] Enter a number: ");
-            const buffer = Buffer.alloc(100);
-            try {
-                const bytesRead = fs.readSync(0, buffer, 0, 100, null);
-                if (bytesRead === 0) return 0;
-                const str = buffer.toString('utf8', 0, bytesRead).trim();
-                const num = parseInt(str, 10);
-                if (isNaN(num)) return 0;
-                return num;
-            } catch (e) {
-                return 0;
+            // Синхронный ввод подсказки в stderr (чтобы не буферизировалось)
+            process.stderr.write("[INPUT]: ");
+            
+            // Читаем до переноса строки
+            let input = "";
+            const buffer = Buffer.alloc(1);
+            while (true) {
+                try {
+                    const bytesRead = fs.readSync(0, buffer, 0, 1);
+                    if (bytesRead === 0 || buffer[0] === 10) break; // 10 = \n
+                    input += buffer.toString();
+                } catch (e) { break; }
             }
+            const num = parseInt(input.trim(), 10);
+            return isNaN(num) ? 0 : num;
         }
     }
 };
@@ -39,15 +35,12 @@ const importObject = {
     try {
         const wasmModule = await WebAssembly.instantiate(wasmBuffer, importObject);
         const exports = wasmModule.instance.exports;
-
-        if (exports[funcName]) {
-            console.log(`Running '${funcName}'...`);
-            const result = exports[funcName]();
-            console.log(`Result: ${result}`);
-        } else {
-            console.error(`Error: Function '${funcName}' not found.`);
+        const mainFunc = exports.Main || exports.main;
+        if (mainFunc) {
+            const result = mainFunc();
+            console.log(`Program finished with result: ${result}`);
         }
     } catch (err) {
-        console.error("Runtime error:", err);
+        console.error("Runtime Error:", err);
     }
 })();

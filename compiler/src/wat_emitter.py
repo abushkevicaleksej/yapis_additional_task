@@ -186,6 +186,7 @@ class WATEmitter:
         if isinstance(e, FloatConst): return 'float'
         if isinstance(e, StringConst): return 'int'
         if isinstance(e, CharConst): return 'char'
+        
         if isinstance(e, VarRef):
             return self.var_types.get(e.name, 'int')
         if isinstance(e, CastExpr):
@@ -434,32 +435,27 @@ class WATEmitter:
             if e.name == 'in':
                 self.lines.append(f'{indent}call $in_i32')
             elif e.name == 'out':
-                arg_t = 'int'
-                if e.args: arg_t = self._get_expr_type(e.args[0])
-                for a in e.args: self.emit_expr(a)
-                if arg_t == 'float': self.lines.append(f'{indent}call $out_f32')
-                else: self.lines.append(f'{indent}call $out_i32')
-                self.lines.append(f'{indent}i32.const 0')
-            elif e.name == 'str':
-                if e.args: self.emit_expr(e.args[0])
-                else: self.lines.append(f'{indent}i32.const 0')
+                arg = e.args[0]
+                self.emit_expr(arg)
+                t = self._get_expr_type(arg)
+                if t == 'float':
+                    self.lines.append(f'{indent}call $out_f32')
+                else:
+                    self.lines.append(f'{indent}call $out_i32')
+                self.lines.append(f'{indent}i32.const 0') # out возвращает 0
             else:
-                target_func = self.func_index.get(e.name)
+                target = self.func_index.get(e.name)
                 for i, arg in enumerate(e.args):
                     self.emit_expr(arg)
-                    expr_t = self._get_expr_type(arg)
-                    param_t = 'int'
-                    
-                    if target_func and i < len(target_func.param_types):
-                        param_t = target_func.param_types[i]
-                    
-                    if param_t == 'float' and expr_t != 'float':
-                        self.lines.append(f'{indent}f32.convert_i32_s')
-                    elif param_t != 'float' and expr_t == 'float':
-                        self.lines.append(f'{indent}i32.trunc_f32_s')
+                    actual_t = self._get_expr_type(arg)
+                    # Проверяем тип параметра функции
+                    if target and i < len(target.param_types):
+                        expected_t = target.param_types[i]
+                        if expected_t == 'float' and actual_t != 'float':
+                            self.lines.append(f'{indent}f32.convert_i32_s')
+                        elif expected_t != 'float' and actual_t == 'float':
+                            self.lines.append(f'{indent}i32.trunc_f32_s')
                 
-                fname = e.name
-                if e.template_args: fname = self._mangle(e.name, e.template_args)
-                self.lines.append(f'{indent}call ${fname}')
+                self.lines.append(f'{indent}call ${e.name}')
         else:
             raise NotImplementedError(f'Unknown expr {type(e)}')

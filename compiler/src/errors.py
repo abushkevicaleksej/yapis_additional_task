@@ -1,5 +1,6 @@
+# errors.py
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 from enum import Enum
 
 class ErrorType(Enum):
@@ -18,39 +19,33 @@ class Error:
     message: str
     line: Optional[int] = None
     column: Optional[int] = None
-    context: Optional[str] = None
-    
-    def __str__(self):
-        result = f"{self.type.value} Error"
-        if self.line is not None:
-            result += f" at line {self.line}"
-            if self.column is not None:
-                result += f":{self.column}"
-        result += f": {self.message}"
-        if self.context:
-            result += f"\nContext: {self.context}"
-        return result
+    length: int = 1
+
+    def format_with_context(self, source_lines: List[str]) -> str:
+        msg = f"{self.type.value} Error at line {self.line}:{self.column + 1}: {self.message}"
+        if self.line and 0 < self.line <= len(source_lines):
+            line_text = source_lines[self.line - 1]
+            # Заменяем табы на пробелы для корректного позиционирования указателя
+            clean_line = line_text.replace('\t', '    ')
+            msg += f"\n    {clean_line}\n"
+            
+            # Считаем смещение с учетом табов
+            tab_count = line_text[:self.column].count('\t')
+            pointer_pos = self.column + (tab_count * 3) 
+            msg += "    " + " " * pointer_pos + "^"
+        return msg
 
 class ErrorCollector:
-    def __init__(self):
-        self.errors = []
-        self.warnings = []
+    def __init__(self, source_code: str = ""):
+        self.errors: List[Error] = []
+        self.source_lines = source_code.splitlines()
     
     def add_error(self, error: Error):
         self.errors.append(error)
-    
-    def add_warning(self, error: Error):
-        self.warnings.append(error)
     
     def has_errors(self):
         return len(self.errors) > 0
     
     def print_all(self):
         for error in self.errors:
-            print(f"❌ {error}")
-        for warning in self.warnings:
-            print(f"⚠️  {warning}")
-    
-    def clear(self):
-        self.errors.clear()
-        self.warnings.clear()
+            print(f"❌ {error.format_with_context(self.source_lines)}")
