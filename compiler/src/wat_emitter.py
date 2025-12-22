@@ -1,5 +1,5 @@
 import copy
-from src.ast_nodes import *
+from compiler.src.ast_nodes import *
 from typing import List, Dict
 
 class WATEmitter:

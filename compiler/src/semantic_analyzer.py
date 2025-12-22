@@ -1,8 +1,7 @@
 from typing import List, Dict, Optional
-from src.errors import ErrorCollector, Error, ErrorType
-from src.symbol_table import SymbolTable, Symbol, SymbolKind, Scope
-from .type_system import TypeChecker, Type, TypeKind
-from src.ast_nodes import *
+from compiler.src.errors import ErrorCollector, Error, ErrorType
+from compiler.src.symbol_table import SymbolTable, Symbol, SymbolKind, Scope
+from compiler.src.ast_nodes import *
 
 class SemanticAnalyzer:
     def __init__(self, error_collector: ErrorCollector):

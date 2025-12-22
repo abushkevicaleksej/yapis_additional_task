@@ -1,5 +1,4 @@
 float[] function SolveLinearSystem() {
-    // Решаем систему: 2x + y = 5, x - y = 1
     float[][] A = [[2, 1], [1, -1]];
     float[] b = [5, 1];
     
@@ -18,7 +17,6 @@ int function Main() {
         out(x[i]);
     }
     
-    // Проверка производной
     float derivative = derivative(x^3 + 2*x^2 - 5, x);
     out("Derivative at x=2: ");
     out(derivative);

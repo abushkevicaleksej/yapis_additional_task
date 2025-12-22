@@ -1,8 +1,8 @@
 import enum
 from typing import Dict, List, Optional, Union
 from dataclasses import dataclass
-from .type_system import Type
-from src.ast_nodes import Func, VarDecl
+from compiler.src.type_system import ErrorType
+from compiler.src.ast_nodes import Func, VarDecl
 
 class Scope:
     def __init__(self, name: str, parent: Optional['Scope'] = None):
@@ -39,7 +39,7 @@ class SymbolKind(enum.Enum):
 class Symbol:
     name: str
     kind: SymbolKind
-    type: Type
+    type: ErrorType
     node: Optional[Union[VarDecl, Func]] = None  # Ссылка на AST узел
     scope: Optional[Scope] = None
     is_initialized: bool = False

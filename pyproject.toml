@@ -1,0 +1,14 @@
+[project]
+name = "lr5"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "antlr4-python3-runtime>=4.13.2",
+    "antlr4-tools>=0.2.2",
+    "importlib-resources>=6.5.2",
+    "install-jdk>=1.1.0",
+    "typing>=3.10.0.0",
+    "wasmtime>=40.0.0",
+]

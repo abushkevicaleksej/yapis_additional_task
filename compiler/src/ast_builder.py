@@ -1,6 +1,6 @@
-from bones.grammarNumLangVisitor import grammarNumLangVisitor
-from bones.grammarNumLangParser import grammarNumLangParser
-from src.ast_nodes import *
+from compiler.bones.grammarNumLangVisitor import grammarNumLangVisitor
+from compiler.bones.grammarNumLangParser import grammarNumLangParser
+from compiler.src.ast_nodes import *
 
 class ASTBuilder(grammarNumLangVisitor):
     def visitChildren(self, node):
