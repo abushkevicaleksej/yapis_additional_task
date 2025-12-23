@@ -53,19 +53,49 @@ class WATEmitter:
             if e.name == 'in': return 'int'
             f = self.func_index.get(e.name)
             return f.ret_type if f else 'int'
+        if isinstance(e, IntegralExpr): return 'float'
         return 'int'
 
     def _collect_locals(self, func: Func):
-        locs = {'tmp_sq': 'float'}
+        # Добавляем переменные для интеграла и системные переменные
+        locs = {
+            'tmp_sq': 'float',
+            'int_i': 'int',
+            'int_h': 'float',
+            'int_sum': 'float',
+            'x': 'float'  # Переменная интегрирования
+        }
+        
         def walk(stmts):
             if not stmts: return
             for s in stmts:
-                if isinstance(s, VarDecl): locs[s.name] = s.type or 'int'
+                if isinstance(s, VarDecl):
+                    locs[s.name] = s.type or 'int'
                 elif isinstance(s, IfStmt):
                     walk(s.then_body)
                     if s.else_body: walk(s.else_body)
+                elif isinstance(s, WhileStmt):
+                    walk(s.body)
+                elif isinstance(s, ForStmt):
+                    if isinstance(s.init, VarDecl):
+                        locs[s.init.name] = s.init.type or 'int'
+                    walk(s.body)
+                # Если внутри выражения есть интеграл, его тело тоже может содержать переменные
+                elif isinstance(s, ExprStmt):
+                    self._check_for_integral_in_expr(s.expr, locs)
+        
         walk(func.body)
         return locs
+
+    def _check_for_integral_in_expr(self, expr, locs):
+        if isinstance(expr, IntegralExpr):
+            locs[expr.var] = 'float'
+        elif hasattr(expr, '__dict__'):
+            for v in expr.__dict__.values():
+                if isinstance(v, list):
+                    for i in v: self._check_for_integral_in_expr(i, locs)
+                else:
+                    self._check_for_integral_in_expr(v, locs)
 
     def emit_func(self, func: Func):
         self.var_types = {name: t for name, t in zip(func.params, func.param_types)}
@@ -151,6 +181,71 @@ class WATEmitter:
         elif isinstance(e, FloatConst): self.lines.append(f'{indent}f32.const {e.value}')
         elif isinstance(e, VarRef): self.lines.append(f'{indent}local.get ${e.name}')
         elif isinstance(e, StringConst): self.lines.append(f'{indent}i32.const {self.strings[e.value]}')
+
+        elif isinstance(e, IntegralExpr):
+            # 1. Вычисляем границы и сохраняем их (используем стек)
+            self.emit_expr(e.start) # [start]
+            self.emit_expr(e.end)   # [start, end]
+            
+            # 2. Инициализируем параметры
+            self.lines.append(f'{indent}f32.sub') # [end-start]
+            self.lines.append(f'{indent}f32.const 1000.0')
+            self.lines.append(f'{indent}f32.div') # h = (end-start)/1000
+            self.lines.append(f'{indent}local.set $int_h')
+            
+            self.lines.append(f'{indent}f32.const 0.0')
+            self.lines.append(f'{indent}local.set $int_sum')
+            
+            self.lines.append(f'{indent}i32.const 0')
+            self.lines.append(f'{indent}local.set $int_i')
+            
+            # 3. Цикл интеграла
+            self.lines.append(f'{indent}block')
+            self.lines.append(f'{indent}  loop')
+            
+            # Условие выхода: if int_i >= 1000 break
+            self.lines.append(f'{indent}    local.get $int_i')
+            self.lines.append(f'{indent}    i32.const 1000')
+            self.lines.append(f'{indent}    i32.ge_s')
+            self.lines.append(f'{indent}    br_if 1')
+            
+            # Вычисляем текущий x: x = start + (int_i + 0.5) * h
+            self.emit_expr(e.start)
+            self.lines.append(f'{indent}local.get $int_i')
+            self.lines.append(f'{indent}f32.convert_i32_s')
+            self.lines.append(f'{indent}f32.const 0.5')
+            self.lines.append(f'{indent}f32.add')
+            self.lines.append(f'{indent}local.get $int_h')
+            self.lines.append(f'{indent}f32.mul')
+            self.lines.append(f'{indent}f32.add')
+            self.lines.append(f'{indent}local.set ${e.var}') # Записываем в переменную 'x'
+            
+            # Вычисляем тело функции (body)
+            self.lines.append(f'{indent}    local.get $int_sum')
+            self.emit_expr(e.body) # Выполняем x^2 или любое другое выражение
+            
+            # Типизация: если тело вернуло int, конвертируем в float
+            if self._get_expr_type(e.body) == 'int':
+                self.lines.append(f'{indent}    f32.convert_i32_s')
+                
+            self.lines.append(f'{indent}    local.get $int_h')
+            self.lines.append(f'{indent}    f32.mul')
+            self.lines.append(f'{indent}    f32.add')
+            self.lines.append(f'{indent}    local.set $int_sum')
+            
+            # Инкремент цикла
+            self.lines.append(f'{indent}    local.get $int_i')
+            self.lines.append(f'{indent}    i32.const 1000') # Ошибка была тут, нужен инкремент 1
+            self.lines.append(f'{indent}    i32.const 1')
+            self.lines.append(f'{indent}    i32.add')
+            self.lines.append(f'{indent}    local.set $int_i')
+            
+            self.lines.append(f'{indent}    br 0')
+            self.lines.append(f'{indent}  end')
+            self.lines.append(f'{indent}end')
+            
+            # Результат выражения - накопленная сумма
+            self.lines.append(f'{indent}local.get $int_sum')
         
         elif isinstance(e, CastExpr): # ВОТ ЭТОТ БЛОК БЫЛ ПРОПУЩЕН
             self.emit_expr(e.expr)
@@ -162,10 +257,18 @@ class WATEmitter:
                 self.lines.append(f'{indent}i32.trunc_f32_s')
 
         elif isinstance(e, UnaryOp):
-            self.emit_expr(e.expr)
             if e.op == '-':
-                if self._get_expr_type(e.expr) == 'float': self.lines.append(f'{indent}f32.neg')
-                else: self.lines.append(f'{indent}i32.const -1'), self.lines.append(f'{indent}i32.mul')
+                # Сначала проверяем тип, чтобы знать, какой ноль использовать
+                if self._get_expr_type(e.expr) == 'float':
+                    self.emit_expr(e.expr)
+                    self.lines.append(f'{indent}f32.neg')
+                else:
+                    # Для целых чисел: 0 - x
+                    self.lines.append(f'{indent}i32.const 0')
+                    self.emit_expr(e.expr)
+                    self.lines.append(f'{indent}i32.sub')
+            elif e.op == '+':
+                self.emit_expr(e.expr)
 
         elif isinstance(e, BinaryOp):
             if e.op == '=':

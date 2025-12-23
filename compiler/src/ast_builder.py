@@ -185,17 +185,31 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(ForStmt(init=init, cond=cond, step=step, body=body), ctx)
     
     def visitIntegral_expr(self, ctx):
-        # Безопасное получение выражений. 
-        # Если ваша грамматика не поддерживает 3 expr, тут может быть ошибка.
-        expr_list = ctx.expr()
-        if not isinstance(expr_list, list): expr_list = [expr_list]
+        # В грамматике: 'integral' '(' expr ',' ID ',' ID ')'
+        # ctx.expr() вернет один узел
+        # ctx.ID() вернет список из двух ID
         
-        body = self.visit(expr_list[0])
-        var_name = ctx.ID().getText() if ctx.ID() else "x"
-        start = self.visit(expr_list[1]) if len(expr_list) > 1 else IntConst(0)
-        end = self.visit(expr_list[2]) if len(expr_list) > 2 else IntConst(1)
+        body = self.visit(ctx.expr())
         
-        return self._with_pos(IntegralExpr(body=body, var=var_name, start=start, end=end), ctx)
+        # Получаем ID границ из списка
+        ids = ctx.ID()
+        start_id = ids[0].getText() if len(ids) > 0 else "a"
+        end_id = ids[1].getText() if len(ids) > 1 else "b"
+        
+        # Переменную интегрирования в данной грамматике взять не откуда (всего 2 ID),
+        # поэтому захардкодим "x" или добавим логику.
+        var_name = "x" 
+        
+        # Конструируем узлы для границ (т.к. это ID, создаем VarRef)
+        start_node = VarRef(name=start_id)
+        end_node = VarRef(name=end_id)
+        
+        return self._with_pos(IntegralExpr(
+            body=body, 
+            var=var_name, 
+            start=start_node, 
+            end=end_node
+        ), ctx)
 
     def visitSpecial_expr(self, ctx):
         if ctx.integral_expr(): return self.visit(ctx.integral_expr())
