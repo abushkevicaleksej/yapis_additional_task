@@ -1,0 +1,33 @@
+template <type T>
+int function IsInRange(T val, T min, T max) {
+    if val >= min && val <= max then {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+template <type Data>
+Data function Select(int condition, Data first, Data second) {
+    if condition == 1 then {
+        return first;
+    } else {
+        return second;
+    }
+}
+
+int function Main() {
+    int score = 75;
+    out("Is 75 in 0..100?");
+    out(IsInRange<int>(score, 0, 100));
+
+    string morning = "Good Morning";
+    string evening = "Good Evening";
+    int hour = 20;
+
+    out("Greeting selection:");
+    string result = Select<string>(hour > 12, evening, morning);
+    out(result);
+
+    return 0;
+}

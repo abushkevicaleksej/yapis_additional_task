@@ -14,20 +14,15 @@ class SemanticAnalyzer:
         self.in_assignment = False
     
     def analyze(self, program: Program):
-        # 0. Регистрируем встроенные функции
         self._register_builtins()
         
-        # 1. Первый проход: собираем объявления функций
         self._collect_declarations(program)
         
-        # 2. Второй проход: проверяем тела функций
         self._check_functions(program)
         
-        # 3. Проверяем наличие main функции
         self._check_main_function()
 
     def _register_builtins(self):
-        # Исправляем out: она не должна требовать 0 аргументов
         out_type = Type(TypeKind.FUNCTION)
         out_type.return_type = Type(TypeKind.VOID) 
         out_type.param_types = [] 
@@ -45,10 +40,8 @@ class SemanticAnalyzer:
     
     def _collect_template_declaration(self, func: Func):
         template_type = Type(TypeKind.TEMPLATE)
-        # Очищаем имена параметров
         template_type.template_params = [p.strip() for p in (func.template_params or [])]
         
-        # Регистрируем типы параметров как GENERIC, если они в списке шаблона
         template_type.param_types = [
             self._get_type_with_templates(t, template_type.template_params) 
             for t in func.param_types
@@ -68,15 +61,11 @@ class SemanticAnalyzer:
             self.errors.add_error(Error(ErrorType.NAME, f"Undefined function '{expr.name}'", expr.line, expr.column))
             return None
 
-        # 1. Подготавливаем типы (копируем из объявления)
         expected_param_types = [t for t in func_symbol.type.param_types]
         return_type = func_symbol.type.return_type
 
-        # 2. ПОДСТАНОВКА (Substitution)
-        # Если это шаблонный символ и в вызове есть <...>
         if func_symbol.kind == SymbolKind.TEMPLATE and expr.template_args:
             mapping = {}
-            # formal_params — это ["T", "Type"]
             formal_params = func_symbol.type.template_params or []
             
             for i, p_name in enumerate(formal_params):
@@ -84,17 +73,14 @@ class SemanticAnalyzer:
                     concrete_type_name = expr.template_args[i]
                     mapping[p_name] = self.type_checker.get_type(concrete_type_name)
 
-            # Заменяем GENERIC типы в параметрах
             for i in range(len(expected_param_types)):
                 t = expected_param_types[i]
                 if t.kind == TypeKind.GENERIC and t.name in mapping:
                     expected_param_types[i] = mapping[t.name]
             
-            # Заменяем тип возврата
             if return_type.kind == TypeKind.GENERIC and return_type.name in mapping:
                 return_type = mapping[return_type.name]
 
-        # 3. Проверка количества аргументов
         if len(expr.args) != len(expected_param_types):
             self.errors.add_error(Error(
                 type=ErrorType.ARGUMENT, 
@@ -103,7 +89,6 @@ class SemanticAnalyzer:
             ))
             return return_type
 
-        # 4. Проверка типов (теперь expected_param_types уже содержит 'int' вместо 'T')
         for i, arg in enumerate(expr.args):
             actual_type = self._check_expr(arg)
             if i < len(expected_param_types):
@@ -157,11 +142,9 @@ class SemanticAnalyzer:
         self.current_function = func_symbol
         self.symbol_table.enter_scope(f"function_{func.name}")
         
-        # Регистрация параметров в локальном scope функции
         for param_name, param_type_str in zip(func.params, func.param_types):
             param_type = self.type_checker.get_type(param_type_str)
             symbol = Symbol(name=param_name, kind=SymbolKind.PARAMETER, type=param_type)
-            # Добавляем именно в текущий scope
             self.symbol_table.add_symbol(symbol)
         
         for stmt in func.body:
@@ -238,7 +221,6 @@ class SemanticAnalyzer:
 
     def _check_if_stmt(self, stmt: IfStmt):
         cond_type = self._check_expr(stmt.cond)
-        # В NumLang условие может быть int или float (0.0 - ложь)
         if cond_type and not self.type_checker.is_numeric(cond_type):
              self.errors.add_error(Error(
                 type=ErrorType.TYPE, message="Condition must be numeric",
@@ -275,8 +257,7 @@ class SemanticAnalyzer:
             ))
             return None
         
-        self._check_expr(expr.expr) # Проверяем индекс
-        # В нашей упрощенной системе считаем, что элементы векторов — это float
+        self._check_expr(expr.expr)
         return Type(TypeKind.FLOAT)
 
     def _check_var_ref(self, expr: VarRef) -> Optional[Type]:
@@ -311,15 +292,11 @@ class SemanticAnalyzer:
         return None
 
     def _check_cast_expr(self, expr: CastExpr) -> Optional[Type]:
-        # Проверяем само выражение, которое кастуем
         self._check_expr(expr.expr)
-        # Возвращаем тип, к которому приводим
         return self.type_checker.get_type(expr.target_type)
 
     def _check_integral_expr(self, expr: IntegralExpr) -> Optional[Type]:
-        # integral(body, var, start, end)
         self.symbol_table.enter_scope("integral_scope")
-        # Переменная интегрирования считается float
         self.symbol_table.add_symbol(Symbol(expr.var, SymbolKind.VARIABLE, Type(TypeKind.FLOAT)))
         self._check_expr(expr.body)
         self.symbol_table.exit_scope()
@@ -338,40 +315,30 @@ class SemanticAnalyzer:
             for arg in expr.args: self._check_expr(arg)
             return func_symbol.type.return_type
 
-        # 1. Клонируем типы параметров и возврата
         expected_param_types = [t for t in func_symbol.type.param_types]
         return_type = func_symbol.type.return_type
 
-        # 2. ПОДСТАНОВКА (SUBSTITUTION)
         if func_symbol.kind == SymbolKind.TEMPLATE and expr.template_args:
-            # Создаем максимально чистый mapping
             mapping = {}
-            # Имена параметров из объявления: template <type T> -> ["T"]
             formal_names = [n.strip() for n in (func_symbol.type.template_params or [])]
             
             for i, p_name in enumerate(formal_names):
                 if i < len(expr.template_args):
-                    # Тип из вызова: Swap<int> -> Type(INT)
                     concrete_type = self.type_checker.get_type(expr.template_args[i])
                     mapping[p_name] = concrete_type
 
-            # Заменяем типы параметров в сигнатуре функции
             for i in range(len(expected_param_types)):
                 t = expected_param_types[i]
                 if t.kind == TypeKind.GENERIC:
-                    # Ищем имя (например "Type") в нашем mapping
                     lookup_name = t.name.strip()
                     if lookup_name in mapping:
                         expected_param_types[i] = mapping[lookup_name]
 
-            # Заменяем тип возврата
             if return_type and return_type.kind == TypeKind.GENERIC:
                 lookup_ret = return_type.name.strip()
                 if lookup_ret in mapping:
                     return_type = mapping[lookup_ret]
 
-        # 3. ПРОВЕРКА АРГУМЕНТОВ
-        # Теперь expected_param_types[i] должен быть уже Type(INT), а не GENERIC("Type")
         if len(expr.args) != len(expected_param_types):
             self.errors.add_error(Error(
                 type=ErrorType.ARGUMENT, 

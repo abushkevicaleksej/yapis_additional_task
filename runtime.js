@@ -7,7 +7,7 @@ if (process.argv.length < 3) {
 
 const wasmBuffer = fs.readFileSync(process.argv[2]);
 
-let wasmInstance; // Ссылка на инстанс для доступа к памяти
+let wasmInstance;
 
 const importObject = {
     env: {
@@ -19,7 +19,6 @@ const importObject = {
             const memory = wasmInstance.exports.memory;
             const view = new Uint8Array(memory.buffer, offset);
             let length = 0;
-            // Ищем нулевой байт (конец строки)
             while (view[length] !== 0 && offset + length < view.length) {
                 length++;
             }
@@ -30,7 +29,6 @@ const importObject = {
         
         in_i32: (offset) => {
             const memory = wasmInstance.exports.memory;
-            // Ищем конец строки-подсказки (null terminator)
             const view = new Uint8Array(memory.buffer, offset);
             let length = 0;
             while (view[length] !== 0) length++;
@@ -54,7 +52,7 @@ const importObject = {
 
 (async () => {
     const wasmModule = await WebAssembly.instantiate(wasmBuffer, importObject);
-    wasmInstance = wasmModule.instance; // Сохраняем инстанс
+    wasmInstance = wasmModule.instance;
     
     const mainFunc = wasmInstance.exports.Main || wasmInstance.exports.main;
     if (mainFunc) mainFunc();

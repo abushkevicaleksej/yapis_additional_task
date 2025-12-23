@@ -79,7 +79,7 @@ class Type:
 
     def __str__(self):
         if self.kind == TypeKind.GENERIC:
-            return self.name # Выведет "T" или "Type"
+            return self.name
         return self.kind.name.lower()
 
 class TypeChecker:
@@ -95,14 +95,12 @@ class TypeChecker:
         if tn in mapping:
             return Type(mapping[tn], name=tn)
         
-        # Если это не базовый тип, возвращаем GENERIC тип с этим именем (например, "T")
         return Type(TypeKind.GENERIC, name=tn)
 
     def is_numeric(self, t: Type) -> bool:
         return t.kind in [TypeKind.INT, TypeKind.FLOAT]
 
     def can_assign(self, target: Type, source: Type) -> bool:
-        # Самое важное: если мы сравниваем GENERIC с чем-то другим, они НЕ равны
         if target.kind == TypeKind.GENERIC or source.kind == TypeKind.GENERIC:
             return target.kind == source.kind and target.name == source.name
         

@@ -18,16 +18,13 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(Program(funcs=funcs), ctx)
     
     def visitTemplate_decl(self, ctx):
-        # 1. Извлекаем параметры: template <type T, type Type>
         template_params = []
         if ctx.template_param_list():
             for p in ctx.template_param_list().template_param():
                 template_params.append(p.ID().getText())
         
-        # 2. Посещаем вложенную функцию
         func_node = self.visit(ctx.func_decl())
         
-        # 3. Настраиваем узел функции как шаблон
         func_node.is_template = True
         func_node.template_params = template_params
         return func_node
@@ -36,17 +33,13 @@ class ASTBuilder(grammarNumLangVisitor):
         is_template = False
         template_params = []
         
-        # 1. Проверяем, начинается ли конкретно ЭТА декларация со слова template
-        # Проверяем первых детей узла
         for i in range(ctx.getChildCount()):
             if ctx.getChild(i).getText() == 'template':
                 is_template = True
-                # Ищем всё между < и >
                 start_idx = -1
                 for j in range(i, ctx.getChildCount()):
                     if ctx.getChild(j).getText() == '<': start_idx = j
                     if ctx.getChild(j).getText() == '>':
-                        # Берем все токены между < и >
                         for k in range(start_idx + 1, j):
                             token = ctx.getChild(k).getText().strip()
                             if token not in [',', 'type', '<', '>']:
@@ -54,7 +47,6 @@ class ASTBuilder(grammarNumLangVisitor):
                         break
                 break
 
-        # 2. Определяем имя и тип возврата
         name = ""
         ret_type = "void"
         func_keyword_idx = -1
@@ -67,14 +59,12 @@ class ASTBuilder(grammarNumLangVisitor):
         
         if func_keyword_idx > 0:
             potential_ret = ctx.getChild(func_keyword_idx - 1).getText()
-            # Если перед 'function' не скобка шаблона, то это тип возврата
             if potential_ret not in ['>', 'template']:
                 ret_type = potential_ret
 
         if hasattr(ctx, 'FUNC_MAIN_ID') and ctx.FUNC_MAIN_ID():
             name = ctx.FUNC_MAIN_ID().getText()
 
-        # 3. Параметры, тело и т.д. (остается как было)
         params, param_types = [], []
         if hasattr(ctx, 'param_list') and ctx.param_list():
             p_list = ctx.param_list()
@@ -101,29 +91,21 @@ class ASTBuilder(grammarNumLangVisitor):
         ), ctx)
 
     def visitFunc_decl(self, ctx):
-        # В правиле: (BASE_TYPE | ID) FUNCTION ID
-        # Если тип возврата - ID, то ctx.ID() вернет список из 2-х элементов.
-        # Если тип возврата - BASE_TYPE, то ctx.ID() вернет список из 1-го элемента.
         
         all_ids = ctx.ID()
         
-        # Определяем тип возврата
         if ctx.BASE_TYPE():
             ret_type = ctx.BASE_TYPE().getText()
         else:
-            # Если BASE_TYPE нет, значит первый ID - это тип
             ret_type = all_ids[0].getText()
 
-        # Имя функции - это всегда ПОСЛЕДНИЙ ID в этом правиле
         name = all_ids[-1].getText()
 
-        # Параметры
         params, param_types = [], []
         if ctx.param_list():
             for p in ctx.param_list().param():
-                # param: BASE_TYPE ID | ID '[' ']' ID | ID ID
                 p_all_ids = p.ID()
-                p_name = p_all_ids[-1].getText() # Имя всегда в конце
+                p_name = p_all_ids[-1].getText()
                 
                 if p.BASE_TYPE():
                     p_type = p.BASE_TYPE().getText()
@@ -133,7 +115,6 @@ class ASTBuilder(grammarNumLangVisitor):
                 param_types.append(p_type)
                 params.append(p_name)
 
-        # Тело
         stmts = []
         if ctx.func_body():
             for s in ctx.func_body().statement():
@@ -143,12 +124,11 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(Func(
             name=name, params=params, param_types=param_types, 
             body=stmts, ret_type=ret_type,
-            is_template=False, # Установится в visitTemplate_decl если нужно
+            is_template=False,
             template_params=[]
         ), ctx)
     
     def visitFunc_main(self, ctx):
-        # func_main: BASE_TYPE FUNCTION FUNC_MAIN_ID
         ret_type = ctx.BASE_TYPE().getText()
         name = ctx.FUNC_MAIN_ID().getText()
 
@@ -173,21 +153,19 @@ class ASTBuilder(grammarNumLangVisitor):
         ), ctx)
 
     def visitVar_decl(self, ctx):
-        # Теперь var_decl — это просто обертка над var_init
         if ctx.var_init():
             return self.visit(ctx.var_init())
         return None
     
     def visitVar_init(self, ctx):
-        # Rule: (BASE_TYPE | ID) ID ('=' expr)?
         all_ids = ctx.ID()
         
         if ctx.BASE_TYPE():
             var_type = ctx.BASE_TYPE().getText()
-            name = all_ids[0].getText() # единственный ID это имя
+            name = all_ids[0].getText()
         else:
-            var_type = all_ids[0].getText() # первый ID это тип
-            name = all_ids[1].getText() # второй ID это имя
+            var_type = all_ids[0].getText()
+            name = all_ids[1].getText()
 
         init = self.visit(ctx.expr()) if ctx.expr() else None
         return self._with_pos(VarDecl(type=var_type, name=name, init=init), ctx)
@@ -243,24 +221,19 @@ class ASTBuilder(grammarNumLangVisitor):
         return self.visit(ctx.logic_expr())
 
     def visitIf_statement(self, ctx):
-        # 1. Условие if
         cond = self.visit(ctx.expr())
         
-        # 2. Ветка THEN (всегда первый func_body)
         then_body = []
         if ctx.func_body():
             for s in ctx.func_body(0).statement():
                 node = self.visit(s)
                 if node: then_body.append(node)
         
-        # 3. Ветка ELSE
         else_body = None
         
-        # Если есть вложенный if (else if ...)
         if ctx.if_statement():
             else_body = [self.visit(ctx.if_statement())]
             
-        # Если есть блок else { ... } (второй func_body в контексте)
         elif len(ctx.func_body()) > 1:
             else_body = []
             for s in ctx.func_body(1).statement():
@@ -272,14 +245,11 @@ class ASTBuilder(grammarNumLangVisitor):
     def visitFunc_call(self, ctx):
         name = ctx.ID().getText()
         
-        # Обработка шаблонных аргументов: ID '<' template_arg_list '>' '(' ... ')'
         template_args = []
         if ctx.template_arg_list():
             for arg in ctx.template_arg_list().template_arg():
-                # template_arg: BASE_TYPE | ID
                 template_args.append(arg.getText())
 
-        # Обычные аргументы
         args = []
         if ctx.expr():
             e_nodes = ctx.expr() if isinstance(ctx.expr(), list) else [ctx.expr()]
@@ -290,12 +260,10 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(node, ctx)
     
     def visitInput_expr(self, ctx):
-        # input_expr: 'in' '(' STRING ')'
         prompt_text = ""
         if ctx.STRING():
-            prompt_text = ctx.STRING().getText()[1:-1] # Убираем кавычки
+            prompt_text = ctx.STRING().getText()[1:-1]
         
-        # Создаем FuncCall с одним строковым аргументом
         args = [StringConst(value=prompt_text)]
         return self._with_pos(FuncCall(name='in', args=args), ctx)
 
@@ -318,20 +286,16 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(WhileStmt(cond=cond, body=body), ctx)
     
     def visitFor_statement(self, ctx):
-        # for ( (var_init | expr)? ; expr? ; expr? )
         init = None
         if ctx.var_init():
             init = self.visit(ctx.var_init())
         elif ctx.expr():
-            # Если первый элемент в скобках — выражение
             init = self.visit(ctx.expr(0))
 
-        # Выражений в скобках может быть несколько. 
-        # Нужно аккуратно сопоставить их с cond и step.
         expr_count = len(ctx.expr())
         current_expr_idx = 0
         if not ctx.var_init() and expr_count > 0:
-            current_expr_idx = 1 # т.к. нулевой ушел в init
+            current_expr_idx = 1
         
         cond = self.visit(ctx.expr(current_expr_idx)) if current_expr_idx < expr_count else None
         step = self.visit(ctx.expr(current_expr_idx + 1)) if (current_expr_idx + 1) < expr_count else None
@@ -344,22 +308,15 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(ForStmt(init=init, cond=cond, step=step, body=body), ctx)
     
     def visitIntegral_expr(self, ctx):
-        # В грамматике: 'integral' '(' expr ',' ID ',' ID ')'
-        # ctx.expr() вернет один узел
-        # ctx.ID() вернет список из двух ID
         
         body = self.visit(ctx.expr())
         
-        # Получаем ID границ из списка
         ids = ctx.ID()
         start_id = ids[0].getText() if len(ids) > 0 else "a"
         end_id = ids[1].getText() if len(ids) > 1 else "b"
         
-        # Переменную интегрирования в данной грамматике взять не откуда (всего 2 ID),
-        # поэтому захардкодим "x" или добавим логику.
         var_name = "x" 
         
-        # Конструируем узлы для границ (т.к. это ID, создаем VarRef)
         start_node = VarRef(name=start_id)
         end_node = VarRef(name=end_id)
         
@@ -377,7 +334,6 @@ class ASTBuilder(grammarNumLangVisitor):
         return self.visitChildren(ctx)
     
     def visitSolveLU_expr(self, ctx):
-        # solveLU(expr, expr)
         exprs = ctx.expr()
         return self._with_pos(SolveLUExpr(
             matrix=self.visit(exprs[0]), 
@@ -385,13 +341,11 @@ class ASTBuilder(grammarNumLangVisitor):
         ), ctx)
     
     def visitDerivative_expr(self, ctx):
-        # derivative(expr, ID)
         body = self.visit(ctx.expr())
         var_name = ctx.ID().getText()
         return self._with_pos(DerivativeExpr(body=body, var=var_name), ctx)
     
     def visitArray_access(self, ctx):
-        # В грамматике это: ID '[' expr ']'
         name = ctx.ID().getText()
         index = self.visit(ctx.expr())
         return self._with_pos(ArrayAccess(name=name, expr=index), ctx)

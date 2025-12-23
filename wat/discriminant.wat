@@ -14,11 +14,12 @@
     (local $int_i i32)
     (local $int_h f32)
     (local $int_sum f32)
+    (local $x_int_var f32)
     (local $disc f32)
     local.get $b
     i32.const 2
     f32.convert_i32_s
-    call $pow_f32
+    f32.add
     i32.const 4
     f32.convert_i32_s
     local.get $a
@@ -38,6 +39,7 @@
     (local $int_i i32)
     (local $int_h f32)
     (local $int_sum f32)
+    (local $x_int_var f32)
     (local $a f32)
     (local $b f32)
     (local $c f32)
@@ -74,7 +76,7 @@
     local.get $b
     local.get $disc
     f32.const 0.5
-    call $pow_f32
+    f32.add
     f32.add
     i32.const 2
     f32.convert_i32_s
@@ -86,7 +88,7 @@
     local.get $b
     local.get $disc
     f32.const 0.5
-    call $pow_f32
+    f32.add
     f32.sub
     i32.const 2
     f32.convert_i32_s

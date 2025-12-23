@@ -13,15 +13,15 @@ def run_stage(name, func):
     print(f"--- Stage: {name} ---")
     try:
         result = func()
-        print(f"✅ {name} completed.")
+        print(f" {name} completed.")
         return result
     except Exception as e:
-        print(f"❌ Error during {name}:")
+        print(f" Error during {name}:")
         print(traceback.format_exc())
         sys.exit(1)
 
 def main(src_path):
-    print(f"🚀 Starting compilation of: {src_path}")
+    print(f" Starting compilation of: {src_path}")
     with open(src_path, 'r', encoding='utf-8') as f:
         source_code = f.read()
 
@@ -43,7 +43,7 @@ def main(src_path):
         analyzer = SemanticAnalyzer(error_collector)
         analyzer.analyze(prog)
         if error_collector.has_errors():
-            print("\n❌ Semantic errors found:")
+            print("\n Semantic errors found:")
             error_collector.print_all()
             sys.exit(1)
     
@@ -55,7 +55,7 @@ def main(src_path):
 
     with open("module.wat", "w") as f:
         f.write(wat)
-    print(f"\n✨ Success! Output saved to module.wat")
+    print(f"\n Success! Output saved to module.wat")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

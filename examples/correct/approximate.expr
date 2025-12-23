@@ -19,8 +19,8 @@ float function ApproximateSin(float x) {
 
 int function Main() {
 
-    int a = in("in a ")
-    int b = in("in b ")
+    int a = in("in a ");
+    int b = in("in b ");
     float area = CalculateArea(a, b);
     out("Area under x^2 from", a, " to ", b);
     out(area);

@@ -39,7 +39,7 @@ class SymbolKind(enum.Enum):
 class Symbol:
     name: str
     kind: SymbolKind
-    type: any # Используйте any или Type из type_system
+    type: any
     node: Optional[Union[VarDecl, Func]] = None
     scope: Optional[Scope] = None
     is_initialized: bool = False

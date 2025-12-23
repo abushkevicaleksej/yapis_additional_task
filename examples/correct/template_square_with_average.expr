@@ -1,0 +1,30 @@
+template <type T>
+T function Square(T x) {
+    return x * x;
+}
+
+template <type N>
+N function Average(N a, N b) {
+    return (a + b) / 2;
+}
+
+int function Main() {
+    int i1 = 10;
+    int i2 = 20;
+    float f1 = 1.5;
+    float f2 = 4.5;
+
+    out("Square int 10:");
+    out(Square<int>(i1));
+
+    out("Square float 1.5:");
+    out(Square<float>(f1));
+
+    out("Average int 10, 20:");
+    out(Average<int>(i1, i2));
+
+    out("Average float 1.5, 4.5:");
+    out(Average<float>(f1, f2));
+
+    return 0;
+}

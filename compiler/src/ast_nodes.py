@@ -3,13 +3,11 @@ from typing import List, Optional, Any
 
 @dataclass
 class ASTNode:
-    # Оставляем значения по умолчанию здесь
     line: int = 0
     column: int = 0
 
 @dataclass
 class Program(ASTNode):
-    # Теперь и здесь обязано быть значение по умолчанию
     funcs: List['Func'] = field(default_factory=list)
 
 @dataclass 

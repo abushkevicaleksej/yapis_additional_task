@@ -25,11 +25,9 @@ class Error:
         msg = f"{self.type.value} Error at line {self.line}:{self.column + 1}: {self.message}"
         if self.line and 0 < self.line <= len(source_lines):
             line_text = source_lines[self.line - 1]
-            # Заменяем табы на пробелы для корректного позиционирования указателя
             clean_line = line_text.replace('\t', '    ')
             msg += f"\n    {clean_line}\n"
             
-            # Считаем смещение с учетом табов
             tab_count = line_text[:self.column].count('\t')
             pointer_pos = self.column + (tab_count * 3) 
             msg += "    " + " " * pointer_pos + "^"
