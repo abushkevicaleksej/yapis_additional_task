@@ -204,7 +204,21 @@ class SemanticAnalyzer:
         if isinstance(expr, FuncCall): return self._check_func_call(expr)
         if isinstance(expr, CastExpr): return self._check_cast_expr(expr)
         if isinstance(expr, IntegralExpr): return self._check_integral_expr(expr)
+        if isinstance(expr, ArrayAccess): return self._check_array_access(expr)
         return None
+    
+    def _check_array_access(self, expr: ArrayAccess) -> Optional[Type]:
+        symbol = self.symbol_table.lookup(expr.name)
+        if not symbol:
+            self.errors.add_error(Error(
+                type=ErrorType.NAME, message=f"Undefined variable '{expr.name}'",
+                line=expr.line, column=expr.column
+            ))
+            return None
+        
+        self._check_expr(expr.expr) # Проверяем индекс
+        # В нашей упрощенной системе считаем, что элементы векторов — это float
+        return Type(TypeKind.FLOAT)
 
     def _check_var_ref(self, expr: VarRef) -> Optional[Type]:
         symbol = self.symbol_table.lookup(expr.name)

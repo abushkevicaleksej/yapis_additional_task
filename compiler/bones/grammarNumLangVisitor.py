@@ -1,4 +1,4 @@
-# Generated from bones/grammarNumLang.g4 by ANTLR 4.13.2
+# Generated from ./grammarNumLang.g4 by ANTLR 4.13.2
 from antlr4 import *
 if "." in __name__:
     from .grammarNumLangParser import grammarNumLangParser
@@ -86,6 +86,11 @@ class grammarNumLangVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by grammarNumLangParser#continue_statement.
     def visitContinue_statement(self, ctx:grammarNumLangParser.Continue_statementContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by grammarNumLangParser#var_init.
+    def visitVar_init(self, ctx:grammarNumLangParser.Var_initContext):
         return self.visitChildren(ctx)
 
 

@@ -12,6 +12,7 @@ FLOAT: [0-9]+ '.' [0-9]+;
 CHAR: '\'' ~['] '\'';
 STRING: '"' ~["]* '"';
 ID: [a-zA-Z_][a-zA-Z_0-9]*;
+COMMENT: '//' ~[\r\n]* -> skip;
 
 // Правила парсера
 prog: (func_decl | func_main | template_decl)* EOF;
@@ -26,11 +27,12 @@ func_body: statement*;
 statement: expr_statement | if_statement | for_statement | while_statement | break_statement | continue_statement | var_decl | return_statement | ';';
 expr_statement: expr ';';
 if_statement: 'if' expr 'then' LFIG_BR func_body RFIG_BR ('else' (if_statement | LFIG_BR func_body RFIG_BR))?;
-for_statement: 'for' '(' (var_decl | expr)? ';' expr? ';' expr? ')' LFIG_BR func_body RFIG_BR;
+for_statement: 'for' '(' (var_init | expr)? ';' expr? ';' expr? ')' LFIG_BR func_body RFIG_BR;
 while_statement: 'while' expr LFIG_BR func_body RFIG_BR;
 break_statement: 'break' ';';
 continue_statement: 'continue' ';';
-var_decl: BASE_TYPE ID ('=' expr)? ';' | ID ID ('=' expr)? ';';
+var_init: (BASE_TYPE | ID) ID ('=' expr)?; 
+var_decl: var_init ';';
 return_statement: 'return' expr ';';
 
 // Иерархия выражений с приоритетом
@@ -49,7 +51,7 @@ integral_expr: 'integral' '(' expr ',' ID ',' ID ')';
 derivative_expr: 'derivative' '(' expr ',' ID ')';
 input_expr: 'in' '(' STRING ')';
 output_expr: 'out' '(' expr ')';
-solveLU_expr: 'solveLU' '(' matrix ',' vector ')';
+solveLU_expr: 'solveLU' '(' expr ',' expr ')';
 func_call: ID '(' (expr (',' expr)*)? ')' | ID '<' template_arg_list '>' '(' (expr (',' expr)*)? ')';
 template_arg_list: template_arg (',' template_arg)*;
 template_arg: BASE_TYPE | ID;

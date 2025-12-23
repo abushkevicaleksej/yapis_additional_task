@@ -1,0 +1,18 @@
+int function CalculateFibonacci(int n) {
+    if n <= 0 then {
+        return 0;
+    } else if n == 1 then {
+        return 1;
+    } else {
+        int expression = CalculateFibonacci(n - 1) + CalculateFibonacci(n - 2);
+        return expression;
+    }
+}
+
+int function Main() {
+    int in_value = in("Enter number to calculate fibonacci value...");
+    int out_result = CalculateFibonacci(in_value);    
+        
+    out(out_result);
+    return 0;
+}

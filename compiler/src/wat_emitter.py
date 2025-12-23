@@ -41,19 +41,27 @@ class WATEmitter:
         if isinstance(e, FloatConst): return 'float'
         if isinstance(e, StringConst): return 'string'
         if isinstance(e, VarRef): return self.var_types.get(e.name, 'int')
-        if isinstance(e, CastExpr): return e.target_type
-        if isinstance(e, UnaryOp): return self._get_expr_type(e.expr)
+        
+        # ДОБАВЬТЕ ЭТО: тип CastExpr — это целевой тип приведения
+        if isinstance(e, CastExpr): return e.target_type 
+        
+        if isinstance(e, DerivativeExpr): return 'float'
+        if isinstance(e, ArrayAccess): return 'float'
+        if isinstance(e, IntegralExpr): return 'float'
+        if isinstance(e, SolveLUExpr): return 'int'
+        
         if isinstance(e, BinaryOp):
             if e.op in ['==', '!=', '<', '>', '<=', '>=']: return 'int'
-            if e.op == '^': return 'float'
             tl, tr = self._get_expr_type(e.left), self._get_expr_type(e.right)
-            return 'float' if tl == 'float' or tr == 'float' else 'int'
+            # Если хотя бы один операнд float или это возведение в степень, результат float
+            if tl == 'float' or tr == 'float' or e.op == '^': return 'float'
+            return 'int'
+        
         if isinstance(e, FuncCall):
-            if e.name == 'out': return 'int'
-            if e.name == 'in': return 'int'
+            if e.name == 'out' or e.name == 'in': return 'int'
             f = self.func_index.get(e.name)
             return f.ret_type if f else 'int'
-        if isinstance(e, IntegralExpr): return 'float'
+            
         return 'int'
 
     def _collect_locals(self, func: Func):
@@ -124,9 +132,7 @@ class WATEmitter:
                 self.emit_expr(s.init)
                 actual_t = self._get_expr_type(s.init)
                 target_t = s.type if s.type else 'int'
-                if target_t == 'float' and actual_t == 'int':
-                    self.lines.append(f'{indent}f32.convert_i32_s')
-                elif target_t == 'int' and actual_t == 'float':
+                if target_t == 'int' and actual_t == 'float':
                     self.lines.append(f'{indent}i32.trunc_f32_s')
                 self.lines.append(f'{indent}local.set ${s.name}')
         elif isinstance(s, ExprStmt):
@@ -235,7 +241,6 @@ class WATEmitter:
             
             # Инкремент цикла
             self.lines.append(f'{indent}    local.get $int_i')
-            self.lines.append(f'{indent}    i32.const 1000') # Ошибка была тут, нужен инкремент 1
             self.lines.append(f'{indent}    i32.const 1')
             self.lines.append(f'{indent}    i32.add')
             self.lines.append(f'{indent}    local.set $int_i')
@@ -302,12 +307,18 @@ class WATEmitter:
                 self.lines.append(f'{indent}{op.get(e.op, "i32.add")}')
         elif isinstance(e, FuncCall):
             if e.name == 'out':
-                t = self._get_expr_type(e.args[0])
-                self.emit_expr(e.args[0])
+                arg = e.args[0]
+                t = self._get_expr_type(arg) # Узнаем тип аргумента
+                self.emit_expr(arg)          # Кладем его в стек
+                
                 if t == 'string':
-                    self.lines.append(f'{indent}i32.const {len(e.args[0].value.encode("utf-8"))}')
+                    self.lines.append(f'{indent}i32.const {len(arg.value.encode("utf-8"))}')
                     self.lines.append(f'{indent}call $out_str')
-                else: self.lines.append(f"{indent}call $out_{'f32' if t=='float' else 'i32'}")
+                elif t == 'float':
+                    self.lines.append(f'{indent}call $out_f32')
+                else:
+                    self.lines.append(f'{indent}call $out_i32')
+                
                 self.lines.append(f'{indent}i32.const 0')
             elif e.name == 'in':
                 prompt = e.args[0]
@@ -321,6 +332,58 @@ class WATEmitter:
                     if f and i < len(f.param_types) and f.param_types[i] == 'float' and self._get_expr_type(arg) == 'int':
                         self.lines.append(f'{indent}f32.convert_i32_s')
                 self.lines.append(f'{indent}call ${e.name}')
+        elif isinstance(e, DerivativeExpr):
+            dx = 0.0001
+            # 1. Сохраняем текущее значение переменной в tmp_sq
+            self.lines.append(f'{indent}local.get ${e.var}')
+            self.lines.append(f'{indent}local.set $tmp_sq')
+            
+            # 2. Вычисляем f(x + dx)
+            self.lines.append(f'{indent}local.get $tmp_sq')
+            self.lines.append(f'{indent}f32.const {dx}')
+            self.lines.append(f'{indent}f32.add')
+            self.lines.append(f'{indent}local.set ${e.var}')
+            self.emit_expr(e.body) # стек: [f_plus]
+            
+            # 3. Вычисляем f(x - dx)
+            self.lines.append(f'{indent}local.get $tmp_sq')
+            self.lines.append(f'{indent}f32.const {dx}')
+            self.lines.append(f'{indent}f32.sub')
+            self.lines.append(f'{indent}local.set ${e.var}')
+            self.emit_expr(e.body) # стек: [f_plus, f_minus]
+            
+            # 4. Считаем (f_plus - f_minus) / (2 * dx)
+            self.lines.append(f'{indent}f32.sub')
+            self.lines.append(f'{indent}f32.const {2*dx}')
+            self.lines.append(f'{indent}f32.div')
+            
+            # 5. Восстанавливаем x
+            self.lines.append(f'{indent}local.get $tmp_sq')
+            self.lines.append(f'{indent}local.set ${e.var}')
+
+        elif isinstance(e, SolveLUExpr):
+            # В реальном компиляторе здесь вызов функции библиотеки
+            self.emit_expr(e.matrix)
+            self.lines.append(f'{indent}drop')
+            self.emit_expr(e.vector)
+            self.lines.append(f'{indent}drop')
+            self.lines.append(f'{indent}i32.const 0') # Возвращаем "адрес" 0
+
+        elif isinstance(e, ArrayAccess):
+            # 1. Получаем базовый адрес (например, x_vec)
+            self.lines.append(f'{indent}local.get ${e.name}')
+            # 2. Вычисляем смещение: индекс * 4 (так как float занимает 4 байта)
+            self.emit_expr(e.expr)
+            self.lines.append(f'{indent}i32.const 4')
+            self.lines.append(f'{indent}i32.mul')
+            # 3. Складываем адрес и смещение
+            self.lines.append(f'{indent}i32.add')
+            # 4. Загружаем float из памяти
+            self.lines.append(f'{indent}f32.load')
+
+        # Для конструкторов [[...]] и [...]
+        elif hasattr(e, 'rows') or hasattr(e, 'elements'):
+            self.lines.append(f'{indent}i32.const 0')
 
     def _collect_all_strings(self, program: Program):
         self.strings = {}

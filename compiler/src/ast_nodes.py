@@ -110,3 +110,18 @@ class IntegralExpr(Expr):
     var: str = ""
     start: Optional[Expr] = None
     end: Optional[Expr] = None
+
+@dataclass
+class SolveLUExpr(Expr):
+    matrix: Optional[Expr] = None
+    vector: Optional[Expr] = None
+
+@dataclass
+class DerivativeExpr(Expr):
+    body: Optional[Expr] = None
+    var: str = ""
+
+@dataclass
+class ArrayAccess(Expr):
+    name: str = ""
+    expr: Optional[Expr] = None

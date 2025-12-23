@@ -52,16 +52,34 @@ class ASTBuilder(grammarNumLangVisitor):
     def visitFunc_main(self, ctx): return self._visit_func_decl(ctx)
 
     def visitVar_decl(self, ctx):
-        t = ctx.getChild(0).getText()
-        # Исправляем ошибку 'list' object has no attribute 'getText'
-        id_node = ctx.ID()
-        if isinstance(id_node, list):
-            name = id_node[0].getText()
+        # Теперь var_decl — это просто обертка над var_init
+        if ctx.var_init():
+            return self.visit(ctx.var_init())
+        return None
+    
+    def visitVar_init(self, ctx):
+        # Правило: (BASE_TYPE | ID) ID ('=' expr)?
+        # Тип — это всегда самый первый ребенок
+        var_type = ctx.getChild(0).getText()
+        
+        # Получаем все ID в этом правиле
+        ids = ctx.ID()
+        if isinstance(ids, list):
+            # Если это 'Vector v', то ids[0] — это 'Vector' (тип), ids[1] — 'v' (имя)
+            # Если это 'int i', то ids[0] — это 'i' (имя), а тип взят из BASE_TYPE
+            name = ids[-1].getText() 
         else:
-            name = id_node.getText() if id_node else ctx.getChild(1).getText()
-            
+            name = ids.getText()
+
         init = self.visit(ctx.expr()) if ctx.expr() else None
-        return self._with_pos(VarDecl(type=t, name=name, init=init), ctx)
+        return self._with_pos(VarDecl(type=var_type, name=name, init=init), ctx)
+
+    def visitSolveLU_expr(self, ctx):
+        exprs = ctx.expr()
+        return self._with_pos(SolveLUExpr(matrix=self.visit(exprs[0]), vector=self.visit(exprs[1])), ctx)
+
+    def visitDerivative_expr(self, ctx):
+        return self._with_pos(DerivativeExpr(body=self.visit(ctx.expr()), var=ctx.ID().getText()), ctx)
 
     def visitReturn_statement(self, ctx):
         expr = self.visit(ctx.expr()) if ctx.expr() else None
@@ -79,6 +97,7 @@ class ASTBuilder(grammarNumLangVisitor):
         elif ctx.func_call(): node = self.visit(ctx.func_call())
         elif ctx.expr(): return self.visit(ctx.expr())
         elif ctx.special_expr(): node = self.visit(ctx.special_expr())
+        elif ctx.array_access(): return self.visit(ctx.array_access())
         
         return self._with_pos(node, ctx) if node else None
 
@@ -166,17 +185,24 @@ class ASTBuilder(grammarNumLangVisitor):
         return self._with_pos(WhileStmt(cond=cond, body=body), ctx)
     
     def visitFor_statement(self, ctx):
-        # По грамматике: for (init; cond; step)
-        # init может быть объявлением или выражением
+        # for ( (var_init | expr)? ; expr? ; expr? )
         init = None
-        if ctx.var_decl(): init = self.visit(ctx.var_decl())
-        elif ctx.expr_statement(): init = self.visit(ctx.expr_statement())
+        if ctx.var_init():
+            init = self.visit(ctx.var_init())
+        elif ctx.expr():
+            # Если первый элемент в скобках — выражение
+            init = self.visit(ctx.expr(0))
+
+        # Выражений в скобках может быть несколько. 
+        # Нужно аккуратно сопоставить их с cond и step.
+        expr_count = len(ctx.expr())
+        current_expr_idx = 0
+        if not ctx.var_init() and expr_count > 0:
+            current_expr_idx = 1 # т.к. нулевой ушел в init
         
-        # В грамматике обычно несколько expr() в скобках for
-        exprs = ctx.expr()
-        cond = self.visit(exprs[0]) if len(exprs) > 0 else None
-        step = self.visit(exprs[1]) if len(exprs) > 1 else None
-        
+        cond = self.visit(ctx.expr(current_expr_idx)) if current_expr_idx < expr_count else None
+        step = self.visit(ctx.expr(current_expr_idx + 1)) if (current_expr_idx + 1) < expr_count else None
+
         body = []
         if ctx.func_body():
             for s in ctx.func_body().statement():
@@ -213,5 +239,26 @@ class ASTBuilder(grammarNumLangVisitor):
 
     def visitSpecial_expr(self, ctx):
         if ctx.integral_expr(): return self.visit(ctx.integral_expr())
-        if hasattr(ctx, 'sum_expr') and ctx.sum_expr(): return self.visit(ctx.sum_expr())
+        if ctx.derivative_expr(): return self.visit(ctx.derivative_expr())
+        if ctx.solveLU_expr(): return self.visit(ctx.solveLU_expr())
         return self.visitChildren(ctx)
+    
+    def visitSolveLU_expr(self, ctx):
+        # solveLU(expr, expr)
+        exprs = ctx.expr()
+        return self._with_pos(SolveLUExpr(
+            matrix=self.visit(exprs[0]), 
+            vector=self.visit(exprs[1])
+        ), ctx)
+    
+    def visitDerivative_expr(self, ctx):
+        # derivative(expr, ID)
+        body = self.visit(ctx.expr())
+        var_name = ctx.ID().getText()
+        return self._with_pos(DerivativeExpr(body=body, var=var_name), ctx)
+    
+    def visitArray_access(self, ctx):
+        # В грамматике это: ID '[' expr ']'
+        name = ctx.ID().getText()
+        index = self.visit(ctx.expr())
+        return self._with_pos(ArrayAccess(name=name, expr=index), ctx)

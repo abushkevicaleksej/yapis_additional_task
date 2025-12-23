@@ -1,4 +1,4 @@
-# Generated from bones/grammarNumLang.g4 by ANTLR 4.13.2
+# Generated from ./grammarNumLang.g4 by ANTLR 4.13.2
 from antlr4 import *
 if "." in __name__:
     from .grammarNumLangParser import grammarNumLangParser
@@ -149,6 +149,15 @@ class grammarNumLangListener(ParseTreeListener):
 
     # Exit a parse tree produced by grammarNumLangParser#continue_statement.
     def exitContinue_statement(self, ctx:grammarNumLangParser.Continue_statementContext):
+        pass
+
+
+    # Enter a parse tree produced by grammarNumLangParser#var_init.
+    def enterVar_init(self, ctx:grammarNumLangParser.Var_initContext):
+        pass
+
+    # Exit a parse tree produced by grammarNumLangParser#var_init.
+    def exitVar_init(self, ctx:grammarNumLangParser.Var_initContext):
         pass
 
 

@@ -46,6 +46,7 @@ FLOAT=45
 CHAR=46
 STRING=47
 ID=48
+COMMENT=49
 'template'=1
 '<'=2
 '>'=3
