@@ -13,7 +13,7 @@ const importObject = {
     env: {
         out_i32: (value) => console.log(`[OUT INT]: ${value}`),
         out_f32: (value) => console.log(`[OUT FLOAT]: ${value.toFixed(4)}`),
-        
+        pow_f32: (base, exp) => Math.pow(base, exp),
         out_str: (offset, length) => {
             // Читаем байты из памяти WASM
             const memory = wasmInstance.exports.memory;

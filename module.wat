@@ -3,6 +3,7 @@
   (import "env" "out_f32" (func $out_f32 (param f32)))
   (import "env" "out_str" (func $out_str (param i32 i32)))
   (import "env" "in_i32" (func $in_i32 (param i32 i32) (result i32)))
+  (import "env" "pow_f32" (func $pow_f32 (param f32 f32) (result f32)))
   (memory (export "memory") 1)
   (data (i32.const 0) "in a")
   (data (i32.const 5) "in b")
@@ -14,7 +15,7 @@
     local.get $b
     i32.const 2
     f32.convert_i32_s
-    f32.add
+    call $pow_f32
     i32.const 4
     f32.convert_i32_s
     local.get $a
@@ -22,8 +23,7 @@
     local.get $c
     f32.mul
     f32.sub
-    local.set $disc
-    local.get $disc
+    local.tee $disc
     drop
     local.get $disc
     return
@@ -43,23 +43,25 @@
     i32.const 4
     call $in_i32
     f32.convert_i32_s
-    local.set $a
+    local.tee $a
+    drop
     i32.const 5
     i32.const 4
     call $in_i32
     f32.convert_i32_s
-    local.set $b
+    local.tee $b
+    drop
     i32.const 10
     i32.const 4
     call $in_i32
     f32.convert_i32_s
-    local.set $c
+    local.tee $c
+    drop
     local.get $a
     local.get $b
     local.get $c
     call $getDiscriminant
-    local.set $disc
-    local.get $disc
+    local.tee $disc
     drop
     local.get $disc
     i32.const 0
@@ -69,35 +71,35 @@
     local.get $b
     local.get $disc
     f32.const 0.5
-    f32.add
+    call $pow_f32
     f32.add
     i32.const 2
     f32.convert_i32_s
     local.get $a
     f32.mul
     f32.div
-    local.set $root1
-    local.get $root1
+    local.tee $root1
     drop
     local.get $b
     local.get $disc
     f32.const 0.5
-    f32.add
+    call $pow_f32
     f32.sub
     i32.const 2
     f32.convert_i32_s
     local.get $a
     f32.mul
     f32.div
-    local.set $root2
-    local.get $root2
+    local.tee $root2
     drop
     local.get $root1
     call $out_f32
     i32.const 0
+    drop
     local.get $root2
     call $out_f32
     i32.const 0
+    drop
     else
     local.get $disc
     i32.const 0
@@ -110,17 +112,18 @@
     local.get $a
     f32.mul
     f32.div
-    local.set $root
-    local.get $root
+    local.tee $root
     drop
     local.get $root
     call $out_f32
     i32.const 0
+    drop
     else
     i32.const 15
     i32.const 32
     call $out_str
     i32.const 0
+    drop
     end
     end
     i32.const 0

@@ -4,7 +4,7 @@ float function CalculateArea(float a, float b) {
 }
 
 float function ApproximateSin(float x) {
-    float sum = 0;
+    float total = 0;
     int n = 5;
     for (int i = 0; i < n; i++) {
         float term = (-1)^i * x^(2*i+1);
@@ -12,9 +12,9 @@ float function ApproximateSin(float x) {
         for (int j = 1; j <= 2*i+1; j++) {
             factorial = factorial * j;
         }
-        sum = sum + term / factorial;
+        total = total + term / factorial;
     }
-    return sum;
+    return total;
 }
 
 int function Main() {

@@ -125,6 +125,22 @@ class SemanticAnalyzer:
         elif isinstance(stmt, ForStmt):
             self._check_for_stmt(stmt)
 
+    def _check_while_stmt(self, stmt: WhileStmt):
+        self._check_expr(stmt.cond)
+        self.symbol_table.enter_scope("while_loop")
+        for s in stmt.body:
+            self._check_statement(s)
+        self.symbol_table.exit_scope()
+
+    def _check_for_stmt(self, stmt: ForStmt):
+        self.symbol_table.enter_scope("for_loop")
+        if stmt.init: self._check_statement(stmt.init)
+        if stmt.cond: self._check_expr(stmt.cond)
+        if stmt.step: self._check_expr(stmt.step)
+        for s in stmt.body:
+            self._check_statement(s)
+        self.symbol_table.exit_scope()
+
     def _check_var_decl(self, decl: VarDecl):
         var_type = self.type_checker.get_type(decl.type) if decl.type else Type(TypeKind.INT)
         

@@ -53,7 +53,13 @@ class ASTBuilder(grammarNumLangVisitor):
 
     def visitVar_decl(self, ctx):
         t = ctx.getChild(0).getText()
-        name = ctx.getChild(1).getText()
+        # Исправляем ошибку 'list' object has no attribute 'getText'
+        id_node = ctx.ID()
+        if isinstance(id_node, list):
+            name = id_node[0].getText()
+        else:
+            name = id_node.getText() if id_node else ctx.getChild(1).getText()
+            
         init = self.visit(ctx.expr()) if ctx.expr() else None
         return self._with_pos(VarDecl(type=t, name=name, init=init), ctx)
 
@@ -149,3 +155,49 @@ class ASTBuilder(grammarNumLangVisitor):
         target = ctx.getChild(1).getText()
         expr = self.visit(ctx.expr())
         return self._with_pos(CastExpr(target_type=target, expr=expr), ctx)
+    
+    def visitWhile_statement(self, ctx):
+        cond = self.visit(ctx.expr())
+        body = []
+        if ctx.func_body():
+            for s in ctx.func_body().statement():
+                node = self.visit(s)
+                if node: body.append(node)
+        return self._with_pos(WhileStmt(cond=cond, body=body), ctx)
+    
+    def visitFor_statement(self, ctx):
+        # По грамматике: for (init; cond; step)
+        # init может быть объявлением или выражением
+        init = None
+        if ctx.var_decl(): init = self.visit(ctx.var_decl())
+        elif ctx.expr_statement(): init = self.visit(ctx.expr_statement())
+        
+        # В грамматике обычно несколько expr() в скобках for
+        exprs = ctx.expr()
+        cond = self.visit(exprs[0]) if len(exprs) > 0 else None
+        step = self.visit(exprs[1]) if len(exprs) > 1 else None
+        
+        body = []
+        if ctx.func_body():
+            for s in ctx.func_body().statement():
+                node = self.visit(s)
+                if node: body.append(node)
+        return self._with_pos(ForStmt(init=init, cond=cond, step=step, body=body), ctx)
+    
+    def visitIntegral_expr(self, ctx):
+        # Безопасное получение выражений. 
+        # Если ваша грамматика не поддерживает 3 expr, тут может быть ошибка.
+        expr_list = ctx.expr()
+        if not isinstance(expr_list, list): expr_list = [expr_list]
+        
+        body = self.visit(expr_list[0])
+        var_name = ctx.ID().getText() if ctx.ID() else "x"
+        start = self.visit(expr_list[1]) if len(expr_list) > 1 else IntConst(0)
+        end = self.visit(expr_list[2]) if len(expr_list) > 2 else IntConst(1)
+        
+        return self._with_pos(IntegralExpr(body=body, var=var_name, start=start, end=end), ctx)
+
+    def visitSpecial_expr(self, ctx):
+        if ctx.integral_expr(): return self.visit(ctx.integral_expr())
+        if hasattr(ctx, 'sum_expr') and ctx.sum_expr(): return self.visit(ctx.sum_expr())
+        return self.visitChildren(ctx)
