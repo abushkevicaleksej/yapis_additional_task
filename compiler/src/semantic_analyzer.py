@@ -27,18 +27,95 @@ class SemanticAnalyzer:
         self._check_main_function()
 
     def _register_builtins(self):
-        # Регистрация функции out (принимает один аргумент любого типа)
+        # Исправляем out: она не должна требовать 0 аргументов
         out_type = Type(TypeKind.FUNCTION)
-        out_type.return_type = Type(TypeKind.INT) 
+        out_type.return_type = Type(TypeKind.VOID) 
         out_type.param_types = [] 
         self.symbol_table.add_symbol(Symbol("out", SymbolKind.FUNCTION, out_type))
         
-        # РЕГИСТРАЦИЯ ФУНКЦИИ in
         in_type = Type(TypeKind.FUNCTION)
         in_type.return_type = Type(TypeKind.INT)
-        # Указываем, что функция ожидает один аргумент типа STRING
         in_type.param_types = [Type(TypeKind.STRING)] 
         self.symbol_table.add_symbol(Symbol("in", SymbolKind.FUNCTION, in_type))
+
+    def _get_type_with_templates(self, type_name: str, template_params: List[str]) -> Type:
+        if template_params and type_name in template_params:
+            return Type(TypeKind.GENERIC, name=type_name)
+        return self.type_checker.get_type(type_name)
+    
+    def _collect_template_declaration(self, func: Func):
+        template_type = Type(TypeKind.TEMPLATE)
+        # Очищаем имена параметров
+        template_type.template_params = [p.strip() for p in (func.template_params or [])]
+        
+        # Регистрируем типы параметров как GENERIC, если они в списке шаблона
+        template_type.param_types = [
+            self._get_type_with_templates(t, template_type.template_params) 
+            for t in func.param_types
+        ]
+        
+        if func.ret_type:
+            template_type.return_type = self._get_type_with_templates(func.ret_type, template_type.template_params)
+        else:
+            template_type.return_type = Type(TypeKind.VOID)
+
+        symbol = Symbol(name=func.name, kind=SymbolKind.TEMPLATE, type=template_type, node=func)
+        self.symbol_table.add_symbol(symbol)
+
+    def _check_func_call(self, expr: FuncCall) -> Optional[Type]:
+        func_symbol = self.symbol_table.lookup_global(expr.name)
+        if not func_symbol:
+            self.errors.add_error(Error(ErrorType.NAME, f"Undefined function '{expr.name}'", expr.line, expr.column))
+            return None
+
+        # 1. Подготавливаем типы (копируем из объявления)
+        expected_param_types = [t for t in func_symbol.type.param_types]
+        return_type = func_symbol.type.return_type
+
+        # 2. ПОДСТАНОВКА (Substitution)
+        # Если это шаблонный символ и в вызове есть <...>
+        if func_symbol.kind == SymbolKind.TEMPLATE and expr.template_args:
+            mapping = {}
+            # formal_params — это ["T", "Type"]
+            formal_params = func_symbol.type.template_params or []
+            
+            for i, p_name in enumerate(formal_params):
+                if i < len(expr.template_args):
+                    concrete_type_name = expr.template_args[i]
+                    mapping[p_name] = self.type_checker.get_type(concrete_type_name)
+
+            # Заменяем GENERIC типы в параметрах
+            for i in range(len(expected_param_types)):
+                t = expected_param_types[i]
+                if t.kind == TypeKind.GENERIC and t.name in mapping:
+                    expected_param_types[i] = mapping[t.name]
+            
+            # Заменяем тип возврата
+            if return_type.kind == TypeKind.GENERIC and return_type.name in mapping:
+                return_type = mapping[return_type.name]
+
+        # 3. Проверка количества аргументов
+        if len(expr.args) != len(expected_param_types):
+            self.errors.add_error(Error(
+                type=ErrorType.ARGUMENT, 
+                message=f"Function '{expr.name}' expects {len(expected_param_types)} args, got {len(expr.args)}",
+                line=expr.line, column=expr.column
+            ))
+            return return_type
+
+        # 4. Проверка типов (теперь expected_param_types уже содержит 'int' вместо 'T')
+        for i, arg in enumerate(expr.args):
+            actual_type = self._check_expr(arg)
+            if i < len(expected_param_types):
+                expected = expected_param_types[i]
+                if actual_type and not self.type_checker.can_assign(expected, actual_type):
+                    self.errors.add_error(Error(
+                        type=ErrorType.TYPE, 
+                        message=f"Arg {i+1}: expected {expected}, got {actual_type}",
+                        line=arg.line, column=arg.column
+                    ))
+        
+        return return_type
 
     def _collect_declarations(self, program: Program):
         for func in program.funcs:
@@ -65,24 +142,6 @@ class SemanticAnalyzer:
             self.errors.add_error(Error(
                 type=ErrorType.SEMANTIC,
                 message=f"Function '{func.name}' already defined",
-                line=func.line, column=func.column
-            ))
-
-    def _collect_template_declaration(self, func: Func):
-        template_type = Type(TypeKind.TEMPLATE)
-        template_type.template_params = func.template_params
-        
-        symbol = Symbol(
-            name=func.name,
-            kind=SymbolKind.TEMPLATE,
-            type=template_type,
-            node=func
-        )
-        try:
-            self.symbol_table.add_symbol(symbol)
-        except ValueError:
-            self.errors.add_error(Error(
-                type=ErrorType.SEMANTIC, message=f"Template '{func.name}' already defined",
                 line=func.line, column=func.column
             ))
 
@@ -272,40 +331,68 @@ class SemanticAnalyzer:
     def _check_func_call(self, expr: FuncCall) -> Optional[Type]:
         func_symbol = self.symbol_table.lookup_global(expr.name)
         if not func_symbol:
-            self.errors.add_error(Error(
-                type=ErrorType.NAME, message=f"Undefined function '{expr.name}'",
-                line=expr.line, column=expr.column
-            ))
+            self.errors.add_error(Error(ErrorType.NAME, f"Undefined function '{expr.name}'", expr.line, expr.column))
             return None
         
-        # Специальная обработка для 'out' (может принимать что угодно)
         if expr.name == "out":
-            for arg in expr.args: 
-                self._check_expr(arg)
+            for arg in expr.args: self._check_expr(arg)
             return func_symbol.type.return_type
 
-        # Для 'in' теперь стандартная проверка сработает корректно, 
-        # так как мы указали [Type(TypeKind.STRING)] выше.
+        # 1. Клонируем типы параметров и возврата
+        expected_param_types = [t for t in func_symbol.type.param_types]
+        return_type = func_symbol.type.return_type
 
-        if len(expr.args) != len(func_symbol.type.param_types):
-             self.errors.add_error(Error(
+        # 2. ПОДСТАНОВКА (SUBSTITUTION)
+        if func_symbol.kind == SymbolKind.TEMPLATE and expr.template_args:
+            # Создаем максимально чистый mapping
+            mapping = {}
+            # Имена параметров из объявления: template <type T> -> ["T"]
+            formal_names = [n.strip() for n in (func_symbol.type.template_params or [])]
+            
+            for i, p_name in enumerate(formal_names):
+                if i < len(expr.template_args):
+                    # Тип из вызова: Swap<int> -> Type(INT)
+                    concrete_type = self.type_checker.get_type(expr.template_args[i])
+                    mapping[p_name] = concrete_type
+
+            # Заменяем типы параметров в сигнатуре функции
+            for i in range(len(expected_param_types)):
+                t = expected_param_types[i]
+                if t.kind == TypeKind.GENERIC:
+                    # Ищем имя (например "Type") в нашем mapping
+                    lookup_name = t.name.strip()
+                    if lookup_name in mapping:
+                        expected_param_types[i] = mapping[lookup_name]
+
+            # Заменяем тип возврата
+            if return_type and return_type.kind == TypeKind.GENERIC:
+                lookup_ret = return_type.name.strip()
+                if lookup_ret in mapping:
+                    return_type = mapping[lookup_ret]
+
+        # 3. ПРОВЕРКА АРГУМЕНТОВ
+        # Теперь expected_param_types[i] должен быть уже Type(INT), а не GENERIC("Type")
+        if len(expr.args) != len(expected_param_types):
+            self.errors.add_error(Error(
                 type=ErrorType.ARGUMENT, 
-                message=f"Function '{expr.name}' expects {len(func_symbol.type.param_types)} args, got {len(expr.args)}",
+                message=f"Function '{expr.name}' expects {len(expected_param_types)} args, got {len(expr.args)}",
                 line=expr.line, column=expr.column
             ))
-        
+            return return_type
+
         for i, arg in enumerate(expr.args):
             arg_type = self._check_expr(arg)
-            if i < len(func_symbol.type.param_types):
-                expected = func_symbol.type.param_types[i]
+            if i < len(expected_param_types):
+                expected = expected_param_types[i]
                 if arg_type and not self.type_checker.can_assign(expected, arg_type):
                     self.errors.add_error(Error(
-                        type=ErrorType.TYPE, message=f"Arg {i+1}: expected {expected}, got {arg_type}",
+                        type=ErrorType.TYPE, 
+                        message=f"Arg {i+1}: expected {expected}, got {arg_type}",
                         line=arg.line, column=arg.column
                     ))
         
-        return func_symbol.type.return_type
-
+        return return_type
+    
     def _check_main_function(self):
         main = self.symbol_table.lookup_global("Main")
         if not main:

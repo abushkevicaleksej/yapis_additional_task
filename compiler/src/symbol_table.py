@@ -39,8 +39,8 @@ class SymbolKind(enum.Enum):
 class Symbol:
     name: str
     kind: SymbolKind
-    type: ErrorType
-    node: Optional[Union[VarDecl, Func]] = None  # Ссылка на AST узел
+    type: any # Используйте any или Type из type_system
+    node: Optional[Union[VarDecl, Func]] = None
     scope: Optional[Scope] = None
     is_initialized: bool = False
     is_used: bool = False

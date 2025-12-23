@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from enum import Enum
 
@@ -67,19 +67,24 @@ class TypeKind(Enum):
     VOID = auto()
     FUNCTION = auto()
     TEMPLATE = auto()
+    GENERIC = auto() 
 
 @dataclass
 class Type:
     kind: TypeKind
+    name: str = "" 
     return_type: Optional['Type'] = None
-    param_types: List['Type'] = None
-    template_params: List[str] = None
+    param_types: List['Type'] = field(default_factory=list)
+    template_params: List[str] = field(default_factory=list)
 
     def __str__(self):
+        if self.kind == TypeKind.GENERIC:
+            return self.name # Выведет "T" или "Type"
         return self.kind.name.lower()
 
 class TypeChecker:
     def get_type(self, type_name: str) -> Type:
+        tn = type_name.strip()
         mapping = {
             'int': TypeKind.INT,
             'float': TypeKind.FLOAT,
@@ -87,13 +92,20 @@ class TypeChecker:
             'string': TypeKind.STRING,
             'void': TypeKind.VOID
         }
-        kind = mapping.get(type_name, TypeKind.INT)
-        return Type(kind)
+        if tn in mapping:
+            return Type(mapping[tn], name=tn)
+        
+        # Если это не базовый тип, возвращаем GENERIC тип с этим именем (например, "T")
+        return Type(TypeKind.GENERIC, name=tn)
 
     def is_numeric(self, t: Type) -> bool:
         return t.kind in [TypeKind.INT, TypeKind.FLOAT]
 
     def can_assign(self, target: Type, source: Type) -> bool:
+        # Самое важное: если мы сравниваем GENERIC с чем-то другим, они НЕ равны
+        if target.kind == TypeKind.GENERIC or source.kind == TypeKind.GENERIC:
+            return target.kind == source.kind and target.name == source.name
+        
         if target.kind == source.kind: return True
         if target.kind == TypeKind.FLOAT and source.kind == TypeKind.INT: return True
         return False

@@ -16,25 +16,32 @@ class WATEmitter:
         self._collect_all_strings(program)
 
         self.lines.append('(module')
-        # ГРУППИРУЕМ ВСЕ ИМПОРТЫ ВМЕСТЕ В НАЧАЛЕ
         self.lines.append(f'{self.indent}(import "env" "out_i32" (func $out_i32 (param i32)))')
         self.lines.append(f'{self.indent}(import "env" "out_f32" (func $out_f32 (param f32)))')
-        self.lines.append(f'{self.indent}(import "env" "out_str" (func $out_str (param i32 i32)))')
-        self.lines.append(f'{self.indent}(import "env" "in_i32" (func $in_i32 (param i32 i32) (result i32)))')
-        # Вот это должно быть здесь:
+        # Изменили: теперь только один параметр (offset)
+        self.lines.append(f'{self.indent}(import "env" "out_str" (func $out_str (param i32)))')
+        self.lines.append(f'{self.indent}(import "env" "in_i32" (func $in_i32 (param i32) (result i32)))')
         self.lines.append(f'{self.indent}(import "env" "pow_f32" (func $pow_f32 (param f32 f32) (result f32)))')
 
-        # ТОЛЬКО ПОСЛЕ ВСЕХ ИМПОРТОВ ИДУТ ОСТАЛЬНЫЕ ОБЪЯВЛЕНИЯ
         self.lines.append(f'{self.indent}(memory (export "memory") 1)')
 
         for text, offset in self.strings.items():
-            self.lines.append(f'{self.indent}(data (i32.const {offset}) "{text.replace("\\n", "\\\\n")}")')
+            # Добавили \00 в конце строки для терминирования
+            self.lines.append(f'{self.indent}(data (i32.const {offset}) "{text.replace("\\n", "\\\\n")}\\00")')
 
         for f in program.funcs:
-            if not f.is_template: self.emit_func(f)
+            # УБРАЛИ проверку is_template, чтобы функции Swap и Max сгенерировались
+            self.emit_func(f)
 
         self.lines.append(')')
         return '\n'.join(self.lines)
+    
+    def _get_wasm_type(self, t_name):
+        """Вспомогательный метод для конвертации имен типов в типы WASM"""
+        if t_name == 'float': return 'f32'
+        if t_name in ['int', 'string', 'char']: return 'i32'
+        # Если это T или Type (шаблон), по умолчанию считаем i32
+        return 'i32'
 
     def _get_expr_type(self, e):
         if isinstance(e, IntConst): return 'int'
@@ -60,7 +67,17 @@ class WATEmitter:
         if isinstance(e, FuncCall):
             if e.name == 'out' or e.name == 'in': return 'int'
             f = self.func_index.get(e.name)
-            return f.ret_type if f else 'int'
+            if not f: return 'int'
+            
+            # ЛОГИКА ДЛЯ ШАБЛОНОВ:
+            # Если функция возвращает "T" (или другой параметр шаблона),
+            # смотрим, какой реальный тип указан в вызове <...>
+            if f.is_template and f.ret_type in f.template_params:
+                idx = f.template_params.index(f.ret_type)
+                if e.template_args and idx < len(e.template_args):
+                    return e.template_args[idx] # вернет 'float' для GetDefault<float>
+            
+            return f.ret_type if f.ret_type else 'int'
             
         return 'int'
 
@@ -129,11 +146,28 @@ class WATEmitter:
         indent = self.indent * 2
         if isinstance(s, VarDecl):
             if s.init:
+                # 1. Генерируем код инициализирующего выражения
                 self.emit_expr(s.init)
-                actual_t = self._get_expr_type(s.init)
+                
+                # 2. Определяем, что ФАКТИЧЕСКИ лежит на стеке WASM
+                # Если это вызов функции, смотрим на её объявление в сигнатуре
+                if isinstance(s.init, FuncCall):
+                    f = self.func_index.get(s.init.name)
+                    # Т.к. сейчас шаблоны генерируются как i32, считаем их 'int'
+                    phys_t = f.ret_type if f and not f.is_template else 'int'
+                else:
+                    phys_t = self._get_expr_type(s.init)
+                
+                # 3. Определяем целевой тип переменной
                 target_t = s.type if s.type else 'int'
-                if target_t == 'int' and actual_t == 'float':
+                
+                # 4. Вставляем конвертацию, если типы различаются
+                if target_t == 'float' and phys_t == 'int':
+                    self.lines.append(f'{indent}f32.convert_i32_s')
+                elif target_t == 'int' and phys_t == 'float':
                     self.lines.append(f'{indent}i32.trunc_f32_s')
+                
+                # 5. Сохраняем результат
                 self.lines.append(f'{indent}local.set ${s.name}')
         elif isinstance(s, ExprStmt):
             t = self._get_expr_type(s.expr)
@@ -278,10 +312,22 @@ class WATEmitter:
         elif isinstance(e, BinaryOp):
             if e.op == '=':
                 self.emit_expr(e.right)
+                
+                # Определяем тип того, что на стеке
+                if isinstance(e.right, FuncCall):
+                    f = self.func_index.get(e.right.name)
+                    phys_t = f.ret_type if f and not f.is_template else 'int'
+                else:
+                    phys_t = self._get_expr_type(e.right)
+                
                 target_t = self.var_types.get(e.left.name, 'int')
-                actual_t = self._get_expr_type(e.right)
-                if target_t == 'float' and actual_t == 'int':
+                
+                # Конвертация
+                if target_t == 'float' and phys_t == 'int':
                     self.lines.append(f'{indent}f32.convert_i32_s')
+                elif target_t == 'int' and phys_t == 'float':
+                    self.lines.append(f'{indent}i32.trunc_f32_s')
+                
                 self.lines.append(f'{indent}local.tee ${e.left.name}')
                 return
             if e.op == '^':
@@ -308,11 +354,11 @@ class WATEmitter:
         elif isinstance(e, FuncCall):
             if e.name == 'out':
                 arg = e.args[0]
-                t = self._get_expr_type(arg) # Узнаем тип аргумента
-                self.emit_expr(arg)          # Кладем его в стек
+                t = self._get_expr_type(arg)
+                self.emit_expr(arg) 
                 
                 if t == 'string':
-                    self.lines.append(f'{indent}i32.const {len(arg.value.encode("utf-8"))}')
+                    # УБРАЛИ расчет длины (AttributeError был здесь)
                     self.lines.append(f'{indent}call $out_str')
                 elif t == 'float':
                     self.lines.append(f'{indent}call $out_f32')
@@ -323,7 +369,7 @@ class WATEmitter:
             elif e.name == 'in':
                 prompt = e.args[0]
                 self.lines.append(f'{indent}i32.const {self.strings[prompt.value]}')
-                self.lines.append(f'{indent}i32.const {len(prompt.value.encode("utf-8"))}')
+                # УБРАЛИ расчет длины для in
                 self.lines.append(f'{indent}call $in_i32')
             else:
                 f = self.func_index.get(e.name)

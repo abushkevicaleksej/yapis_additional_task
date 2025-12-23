@@ -3,11 +3,14 @@ void function Swap(Type a, Type b) {
     Type temp = a;
     a = b;
     b = temp;
+    out("Inside Swap:");
+    out(a);
+    out(b);
 }
 
 template <type T>
 T function Max(T a, T b) {
-    if (a > b) then {
+    if a > b then {
         return a;
     } else {
         return b;
@@ -39,7 +42,6 @@ int function Main() {
     int maxVal = Max<int>(x, y);
     out(maxVal);
     
-
     int defaultInt = GetDefault<int>();
     float defaultFloat = GetDefault<float>();
     
@@ -49,19 +51,19 @@ int function Main() {
     out("Default float");
     out(defaultFloat);
     
-    char a = 'A';
-    char b = 'B';
+    string a = "A";
+    string b = "B";
 
-    out("Swap");
+    out("Swap strings");
     out(a);
     out(b);
 
-    Swap<char>(a, b);
+    Swap<string>(a, b);
     out(a);
     out(b);
     
-    char maxChar = Max<char>(a, b);
-    out(maxChar);
+    string maxStr = Max<string>(a, b);
+    out(maxStr);
     
     return 0;
 }

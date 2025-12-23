@@ -1,54 +1,76 @@
 (module
   (import "env" "out_i32" (func $out_i32 (param i32)))
   (import "env" "out_f32" (func $out_f32 (param f32)))
-  (import "env" "out_str" (func $out_str (param i32 i32)))
-  (import "env" "in_i32" (func $in_i32 (param i32 i32) (result i32)))
+  (import "env" "out_str" (func $out_str (param i32)))
+  (import "env" "in_i32" (func $in_i32 (param i32) (result i32)))
   (import "env" "pow_f32" (func $pow_f32 (param f32 f32) (result f32)))
   (memory (export "memory") 1)
-  (data (i32.const 0) "Enter x...")
-  (data (i32.const 11) "Enter y...")
-  (data (i32.const 22) "Enter z...")
-  (data (i32.const 33) "Triangle is not exist")
-  (func $calculateArea (param $a f32) (param $b f32) (param $c f32) (result f32)
+  (data (i32.const 0) "Swap\00")
+  (data (i32.const 5) "maxVal\00")
+  (data (i32.const 12) "Default int\00")
+  (data (i32.const 24) "Default float\00")
+  (data (i32.const 38) "A\00")
+  (data (i32.const 40) "B\00")
+  (data (i32.const 42) "Swap strings\00")
+  (func $Swap (param $a i32) (param $b i32) 
     (local $tmp_sq f32)
     (local $int_i i32)
     (local $int_h f32)
     (local $int_sum f32)
     (local $x f32)
-    (local $s f32)
-    (local $temp f32)
-    (local $area f32)
+    (local $temp i32)
     local.get $a
-    local.get $b
-    f32.add
-    local.get $c
-    f32.add
-    f32.const 2.0
-    f32.div
-    local.set $s
-    local.get $s
-    local.get $s
-    local.get $a
-    f32.sub
-    f32.mul
-    local.get $s
-    local.get $b
-    f32.sub
-    f32.mul
-    local.get $s
-    local.get $c
-    f32.sub
-    f32.mul
     local.set $temp
+    local.get $b
+    local.tee $a
+    drop
     local.get $temp
-    f32.const 0.5
-    call $pow_f32
-    local.set $area
-    local.get $area
-    return
-    f32.const 0.0
+    local.tee $b
+    drop
   )
-  (export "calculateArea" (func $calculateArea))
+  (export "Swap" (func $Swap))
+  (func $Max (param $a i32) (param $b i32) (result i32)
+    (local $tmp_sq f32)
+    (local $int_i i32)
+    (local $int_h f32)
+    (local $int_sum f32)
+    (local $x f32)
+    local.get $a
+    local.get $b
+    i32.gt_s
+    if
+    local.get $a
+    return
+    else
+    local.get $b
+    return
+    end
+    i32.const 0
+  )
+  (export "Max" (func $Max))
+  (func $PrintContainer (param $container i32) (param $element i32) 
+    (local $tmp_sq f32)
+    (local $int_i i32)
+    (local $int_h f32)
+    (local $int_sum f32)
+    (local $x f32)
+    local.get $element
+    call $out_i32
+    i32.const 0
+    drop
+  )
+  (export "PrintContainer" (func $PrintContainer))
+  (func $GetDefault  (result i32)
+    (local $tmp_sq f32)
+    (local $int_i i32)
+    (local $int_h f32)
+    (local $int_sum f32)
+    (local $x f32)
+    i32.const 0
+    return
+    i32.const 0
+  )
+  (export "GetDefault" (func $GetDefault))
   (func $Main  (result i32)
     (local $tmp_sq f32)
     (local $int_i i32)
@@ -56,46 +78,106 @@
     (local $int_sum f32)
     (local $x i32)
     (local $y i32)
-    (local $z i32)
-    (local $result f32)
-    i32.const 0
-    i32.const 10
-    call $in_i32
+    (local $maxVal i32)
+    (local $defaultInt i32)
+    (local $defaultFloat f32)
+    (local $a i32)
+    (local $b i32)
+    (local $maxStr i32)
+    i32.const 5
     local.set $x
-    i32.const 11
     i32.const 10
-    call $in_i32
     local.set $y
-    i32.const 22
-    i32.const 10
-    call $in_i32
-    local.set $z
-    local.get $x
-    f32.convert_i32_s
-    f32.convert_i32_s
-    local.get $y
-    f32.convert_i32_s
-    f32.convert_i32_s
-    local.get $z
-    f32.convert_i32_s
-    f32.convert_i32_s
-    call $calculateArea
-    local.set $result
-    local.get $result
-    local.get $result
-    f32.ne
-    if
-    i32.const 33
-    i32.const 21
+    i32.const 0
     call $out_str
     i32.const 0
     drop
-    else
-    local.get $result
+    local.get $x
+    call $out_i32
+    i32.const 0
+    drop
+    local.get $y
+    call $out_i32
+    i32.const 0
+    drop
+    local.get $x
+    local.get $y
+    call $Swap
+    local.get $x
+    call $out_i32
+    i32.const 0
+    drop
+    local.get $y
+    call $out_i32
+    i32.const 0
+    drop
+    i32.const 5
+    call $out_str
+    i32.const 0
+    drop
+    local.get $x
+    local.get $y
+    call $Max
+    local.set $maxVal
+    local.get $maxVal
+    call $out_i32
+    i32.const 0
+    drop
+    call $GetDefault
+    local.set $defaultInt
+    call $GetDefault
+    local.set $defaultFloat
+    i32.const 12
+    call $out_str
+    i32.const 0
+    drop
+    local.get $defaultInt
+    call $out_i32
+    i32.const 0
+    drop
+    i32.const 24
+    call $out_str
+    i32.const 0
+    drop
+    local.get $defaultFloat
     call $out_f32
     i32.const 0
     drop
-    end
+    i32.const 38
+    local.set $a
+    i32.const 40
+    local.set $b
+    i32.const 42
+    call $out_str
+    i32.const 0
+    drop
+    local.get $a
+    call $out_str
+    i32.const 0
+    drop
+    local.get $b
+    call $out_str
+    i32.const 0
+    drop
+    local.get $a
+    local.get $b
+    call $Swap
+    local.get $a
+    call $out_str
+    i32.const 0
+    drop
+    local.get $b
+    call $out_str
+    i32.const 0
+    drop
+    local.get $a
+    local.get $b
+    call $Max
+    local.set $maxStr
+    local.get $maxStr
+    call $out_str
+    i32.const 0
+    drop
     i32.const 0
     return
     i32.const 0

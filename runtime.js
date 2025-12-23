@@ -14,26 +14,31 @@ const importObject = {
         out_i32: (value) => console.log(`[OUT INT]: ${value}`),
         out_f32: (value) => console.log(`[OUT FLOAT]: ${value.toFixed(4)}`),
         pow_f32: (base, exp) => Math.pow(base, exp),
-        out_str: (offset, length) => {
-            // Читаем байты из памяти WASM
+        
+        out_str: (offset) => {
             const memory = wasmInstance.exports.memory;
+            const view = new Uint8Array(memory.buffer, offset);
+            let length = 0;
+            // Ищем нулевой байт (конец строки)
+            while (view[length] !== 0 && offset + length < view.length) {
+                length++;
+            }
             const bytes = new Uint8Array(memory.buffer, offset, length);
             const str = new TextDecoder("utf-8").decode(bytes);
             console.log(`[OUT STR]: ${str}`);
         },
         
-        in_i32: (offset, length) => {
+        in_i32: (offset) => {
             const memory = wasmInstance.exports.memory;
-            if (length > 0) {
-                // Читаем подсказку из памяти WASM
-                const bytes = new Uint8Array(memory.buffer, offset, length);
-                const prompt = new TextDecoder("utf-8").decode(bytes);
-                process.stdout.write(`${prompt}: `); // Выводим подсказку без переноса строки
-            } else {
-                process.stdout.write("[INPUT]: ");
-            }
+            // Ищем конец строки-подсказки (null terminator)
+            const view = new Uint8Array(memory.buffer, offset);
+            let length = 0;
+            while (view[length] !== 0) length++;
 
-            // Синхронное чтение ввода
+            const bytes = new Uint8Array(memory.buffer, offset, length);
+            const prompt = new TextDecoder("utf-8").decode(bytes);
+            process.stdout.write(`${prompt}: `);
+
             const BUF_SIZE = 1024;
             const buffer = Buffer.alloc(BUF_SIZE);
             try {
